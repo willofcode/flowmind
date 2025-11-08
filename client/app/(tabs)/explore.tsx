@@ -1,125 +1,315 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet, View } from 'react-native';
+/**
+ * Browse Tab - Tools & Resources
+ * Streak card, breathing tool, grocery list
+ * Follows calm UI principles from DESIGN_PATTERNS.md
+ */
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { StreakCard } from '@/components/streak-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
-import { GoogleCalendarConnect } from '@/components/google-calendar-connect';
+import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import type { StreakData } from '@/types/neuro-profile';
 
-export default function TabTwoScreen() {
-  const handleConnectionChange = (connected: boolean, token?: string) => {
-    console.log('Calendar connection changed:', connected);
-    if (token) {
-      console.log('Access token received:', token.substring(0, 20) + '...');
-    }
+// Mock data - will be replaced with API/storage
+const mockStreak: StreakData = {
+  currentStreak: 5,
+  longestStreak: 12,
+  lastCompletedDate: new Date().toISOString().split('T')[0],
+  totalCompleted: 47,
+};
+
+const mockGroceryList = [
+  { item: 'Chicken breast', qty: 2, unit: 'lbs', checked: false },
+  { item: 'Mixed greens', qty: 1, unit: 'bag', checked: false },
+  { item: 'Quinoa', qty: 1, unit: 'box', checked: true },
+  { item: 'Olive oil', qty: 1, unit: 'bottle', checked: false },
+  { item: 'Greek yogurt', qty: 4, unit: 'cups', checked: false },
+];
+
+export default function BrowseScreen() {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
+  const router = useRouter();
+  
+  const [streak] = useState<StreakData>(mockStreak);
+  const [groceryItems, setGroceryItems] = useState(mockGroceryList);
+
+  const handleStartBreathing = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    Alert.alert(
+      'Start Breathing Session',
+      'Choose a breathing protocol:',
+      [
+        {
+          text: 'Box Breathing (4-4-4-4)',
+          onPress: () => {
+            router.push({
+              pathname: '/breathing-session',
+              params: { protocol: 'box' },
+            });
+          },
+        },
+        {
+          text: 'Rescue Breath (4-7-8)',
+          onPress: () => {
+            router.push({
+              pathname: '/breathing-session',
+              params: { protocol: 'rescue' },
+            });
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleGroceryToggle = async (index: number) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setGroceryItems(prev =>
+      prev.map((item, i) =>
+        i === index ? { ...item, checked: !item.checked } : item
+      )
+    );
+  };
+
+  const handleCopyGroceryList = async () => {
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Copied!', 'Grocery list copied to clipboard');
+    // TODO: Implement actual clipboard copy
   };
 
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      
-      <View style={{ marginBottom: 20 }}>
-        <GoogleCalendarConnect onConnectionChange={handleConnectionChange} />
-      </View>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: colors.text }]}>
+            Browse
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Your wellness tools & resources
+          </Text>
+        </View>
 
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+        {/* Streak Card */}
+        <StreakCard streak={streak} />
+
+        {/* Breathing Tool Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Breathe & Calm
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.toolCard,
+              {
+                backgroundColor: colors.primary,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+            onPress={handleStartBreathing}
+          >
+            <View style={styles.toolCardContent}>
+              <IconSymbol name="wind" size={32} color="#FFFFFF" />
+              <View style={styles.toolTextContainer}>
+                <Text style={styles.toolTitle}>Start Calm Session</Text>
+                <Text style={styles.toolDescription}>
+                  Guided breathing with voice instructions
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+        </View>
+
+        {/* Grocery List Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              This Week's Groceries
+            </Text>
+            <Pressable
+              style={({ pressed }) => [
+                styles.copyButton,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+              onPress={handleCopyGroceryList}
+            >
+              <IconSymbol name="doc.on.clipboard" size={20} color={colors.text} />
+              <Text style={[styles.copyButtonText, { color: colors.text }]}>
+                Copy
+              </Text>
+            </Pressable>
+          </View>
+
+          <View
+            style={[
+              styles.groceryListContainer,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            {groceryItems.map((item, index) => (
+              <Pressable
+                key={index}
+                style={({ pressed }) => [
+                  styles.groceryItem,
+                  {
+                    borderBottomColor: colors.borderLight,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                  index === groceryItems.length - 1 && styles.groceryItemLast,
+                ]}
+                onPress={() => handleGroceryToggle(index)}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    {
+                      borderColor: item.checked ? colors.success : colors.border,
+                      backgroundColor: item.checked ? colors.success : 'transparent',
+                    },
+                  ]}
+                >
+                  {item.checked && (
+                    <IconSymbol name="checkmark" size={16} color="#FFFFFF" />
+                  )}
+                </View>
+                <Text
+                  style={[
+                    styles.groceryItemText,
+                    { color: item.checked ? colors.textTertiary : colors.text },
+                    item.checked && styles.groceryItemTextChecked,
+                  ]}
+                >
+                  {item.item} ({item.qty} {item.unit})
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
   },
-  titleContainer: {
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: CalmSpacing.lg,
+    paddingBottom: CalmSpacing.xxl,
+  },
+  header: {
+    marginBottom: CalmSpacing.xl,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '700',
+    marginBottom: CalmSpacing.xs,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  section: {
+    marginBottom: CalmSpacing.xl,
+  },
+  sectionHeader: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: CalmSpacing.md,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  toolCard: {
+    borderRadius: 16,
+    padding: CalmSpacing.lg,
+    minHeight: CalmSpacing.comfortableTouchTarget,
+  },
+  toolCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CalmSpacing.md,
+  },
+  toolTextContainer: {
+    flex: 1,
+  },
+  toolTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: CalmSpacing.xs,
+  },
+  toolDescription: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    opacity: 0.9,
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CalmSpacing.xs,
+    paddingHorizontal: CalmSpacing.md,
+    paddingVertical: CalmSpacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  copyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  groceryListContainer: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  groceryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: CalmSpacing.md,
+    borderBottomWidth: 1,
+    minHeight: CalmSpacing.minTouchTarget,
+  },
+  groceryItemLast: {
+    borderBottomWidth: 0,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    marginRight: CalmSpacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groceryItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+  },
+  groceryItemTextChecked: {
+    textDecorationLine: 'line-through',
   },
 });

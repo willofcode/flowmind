@@ -141,3 +141,61 @@ export interface TodayBlock {
   };
   status: 'upcoming' | 'in-progress' | 'completed' | 'skipped';
 }
+
+/**
+ * Task types for the 3-tab UX
+ */
+export type TaskType = 'WORKOUT' | 'MEAL' | 'BREATHING' | 'OTHER';
+
+export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
+
+export interface DayTask {
+  id: string;
+  type: TaskType;
+  title: string;
+  startTime: string; // "HH:mm" format
+  endTime: string;
+  status: TaskStatus;
+  durationSec: number;
+  isBreathing?: boolean; // true for breathing/calm tasks
+  description?: string;
+  icon?: string; // icon name for display
+}
+
+/**
+ * Navigation types for Bottom Tabs
+ */
+export type RootTabParamList = {
+  index: undefined; // Home
+  today: undefined;
+  explore: undefined;
+  'plan-week': undefined;
+};
+
+/**
+ * Schedule grid types
+ */
+export interface DayCell {
+  date: string; // YYYY-MM-DD
+  label: string; // 'Mon', 'Tue', etc.
+  events: ScheduleEvent[];
+}
+
+export interface ScheduleEvent {
+  id: string;
+  title: string;
+  startTime: string; // HH:mm
+  endTime: string;
+  type: TaskType;
+  date: string; // YYYY-MM-DD
+}
+
+/**
+ * Streak tracking
+ */
+export interface StreakData {
+  currentStreak: number; // consecutive days
+  longestStreak: number;
+  lastCompletedDate: string; // YYYY-MM-DD
+  totalCompleted: number;
+}
