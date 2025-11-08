@@ -142,7 +142,79 @@ app.post("/create-events", async (req, res) => {
 });
 
 // ============================================================================
-// NeuralSeek mAIstro Agent - Weekly Planning
+// NeuralSeek Direct API Integration (Seek & mAIstro)
+// ============================================================================
+
+// Embed code for NeuralSeek API access
+const NS_EMBED_CODE = process.env.NS_EMBED_CODE || "370207002";
+const NS_SEEK_ENDPOINT = process.env.NS_SEEK_ENDPOINT || "https://stagingapi.neuralseek.com/v1/stony23/seek";
+const NS_MAISTRO_ENDPOINT = process.env.NS_MAISTRO_ENDPOINT || "https://stagingapi.neuralseek.com/v1/stony23/maistro";
+
+/**
+ * NeuralSeek Seek endpoint - For knowledge base queries
+ */
+app.post("/seek", async (req, res) => {
+  try {
+    const { question, context } = req.body;
+
+    const response = await fetch(NS_SEEK_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "embedcode": NS_EMBED_CODE,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        question,
+        context: context || {}
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`NeuralSeek Seek API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("Seek error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * NeuralSeek mAIstro endpoint - For AI agent interactions
+ */
+app.post("/maistro", async (req, res) => {
+  try {
+    const { prompt, context, parameters } = req.body;
+
+    const response = await fetch(NS_MAISTRO_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "embedcode": NS_EMBED_CODE,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        prompt,
+        context: context || {},
+        parameters: parameters || {}
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`NeuralSeek mAIstro API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("mAIstro error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// Weekly Planning with NeuralSeek mAIstro
 // ============================================================================
 
 app.post("/plan-week", async (req, res) => {
@@ -171,25 +243,34 @@ app.post("/plan-week", async (req, res) => {
       }
     }
 
-    // Step 2: Build NeuralSeek agent input
-    const agentInput = buildNeuroAgentPrompt(userProfile, weekStartISO, weekEndISO, busyBlocks);
+    // Step 2: Build NeuralSeek mAIstro prompt
+    const agentPrompt = buildNeuroAgentPrompt(userProfile, weekStartISO, weekEndISO, busyBlocks);
 
-    // Step 3: Call NeuralSeek mAIstro
-    const nsResponse = await fetch(process.env.NS_API_ENDPOINT || "https://api.neuralseek.com/maistro_stream", {
+    // Step 3: Call NeuralSeek mAIstro directly using embed code
+    const nsResponse = await fetch(NS_MAISTRO_ENDPOINT, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.NS_API_KEY}`,
+        "embedcode": NS_EMBED_CODE,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        agent: "neuro-weekly-planner",
-        input: agentInput,
-        stream: false
+        prompt: agentPrompt.instructions,
+        context: {
+          userProfile: agentPrompt.userProfile,
+          weekRange: agentPrompt.weekRange,
+          busyBlocks: agentPrompt.busyBlocks,
+          constraints: agentPrompt.constraints
+        },
+        parameters: {
+          temperature: 0.7,
+          max_tokens: 4000,
+          response_format: "json"
+        }
       })
     });
 
     if (!nsResponse.ok) {
-      throw new Error(`NeuralSeek API error: ${nsResponse.statusText}`);
+      throw new Error(`NeuralSeek mAIstro API error: ${nsResponse.statusText}`);
     }
 
     const planData = await nsResponse.json();
@@ -311,7 +392,18 @@ app.get("/weekly-plan/:userId", async (req, res) => {
 // ============================================================================
 
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    services: {
+      neuralseek: {
+        embedCode: NS_EMBED_CODE ? '✓ configured' : '✗ missing',
+        seekEndpoint: NS_SEEK_ENDPOINT,
+        maistroEndpoint: NS_MAISTRO_ENDPOINT
+      },
+      supabase: process.env.SUPABASE_URL ? '✓ configured' : '✗ missing'
+    }
+  });
 });
 
 // ============================================================================
@@ -321,7 +413,9 @@ app.get("/health", (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 FlowMind server running on http://localhost:${PORT}`);
-  console.log(`   - NeuralSeek: ${process.env.NS_API_KEY ? '✓ configured' : '✗ missing'}`);
+  console.log(`   - NeuralSeek Embed Code: ${NS_EMBED_CODE ? '✓ configured' : '✗ missing'}`);
+  console.log(`   - NeuralSeek Seek: ${NS_SEEK_ENDPOINT}`);
+  console.log(`   - NeuralSeek mAIstro: ${NS_MAISTRO_ENDPOINT}`);
   console.log(`   - Supabase: ${process.env.SUPABASE_URL ? '✓ configured' : '✗ missing'}`);
 });
 
