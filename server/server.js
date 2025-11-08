@@ -2,68 +2,326 @@ import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
 import dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
+
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ---- Google FreeBusy Proxy ----
+// Initialize Supabase
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
+
+// ============================================================================
+// Profile Management (Supabase)
+// ============================================================================
+
+app.post("/profile", async (req, res) => {
+  try {
+    const { userId, profile } = req.body;
+    
+    const { data, error } = await supabase
+      .from("profiles")
+      .upsert({ user_id: userId, profile_data: profile, updated_at: new Date().toISOString() })
+      .select();
+
+    if (error) throw error;
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("Profile save error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/profile/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("profile_data")
+      .eq("user_id", userId)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+      throw error;
+    }
+
+    res.json(data.profile_data);
+  } catch (err) {
+    console.error("Profile load error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// Google Calendar Integration
+// ============================================================================
+
 app.post("/freebusy", async (req, res) => {
-  const { accessToken, timeMin, timeMax } = req.body;
-  const r = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ timeMin, timeMax, items: [{ id: "primary" }] })
-  });
-  res.json(await r.json());
-});
-
-// ---- NeuralSeek Integration ----
-app.post("/plan-week", async (req, res) => {
-  const { userProfile, weekStartISO, weekEndISO } = req.body;
-  const ns = await fetch("https://api.neuralseek.com/maistro_stream", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.NS_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      agent: "optimize-neuro-agent",
-      input: { userProfile, weekStartISO, weekEndISO }
-    })
-  });
-  const data = await ns.json();
-  res.json(data);
-});
-
-// ---- Create Calendar Events ----
-app.post("/create-events", async (req, res) => {
-  const { accessToken, events } = req.body;
-  const out = [];
-  for (const e of events) {
-    const g = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+  try {
+    const { accessToken, timeMin, timeMax } = req.body;
+    
+    const response = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${accessToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        summary: e.summary,
-        description: e.description,
-        start: { dateTime: e.startISO },
-        end: { dateTime: e.endISO },
-        reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 10 }] }
+        timeMin,
+        timeMax,
+        items: [{ id: "primary" }]
       })
     });
-    out.push(await g.json());
+
+    if (!response.ok) {
+      throw new Error(`Google Calendar API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("FreeBusy error:", err);
+    res.status(500).json({ error: err.message });
   }
-  res.json(out);
 });
 
-app.listen(process.env.PORT, () =>
-  console.log(`Server running on http://localhost:${process.env.PORT}`)
-);
+app.post("/create-events", async (req, res) => {
+  try {
+    const { accessToken, events } = req.body;
+    const results = [];
+
+    for (const event of events) {
+      const response = await fetch(
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            summary: event.summary,
+            description: event.description,
+            start: { dateTime: event.startISO, timeZone: "America/New_York" },
+            end: { dateTime: event.endISO, timeZone: "America/New_York" },
+            reminders: {
+              useDefault: false,
+              overrides: event.reminders || [
+                { method: "popup", minutes: 10 },
+                { method: "popup", minutes: 3 },
+                { method: "popup", minutes: 1 }
+              ]
+            }
+          })
+        }
+      );
+
+      if (!response.ok) {
+        console.error(`Failed to create event: ${event.summary}`);
+        results.push({ error: response.statusText, event: event.summary });
+      } else {
+        const created = await response.json();
+        results.push(created);
+      }
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error("Create events error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// NeuralSeek mAIstro Agent - Weekly Planning
+// ============================================================================
+
+app.post("/plan-week", async (req, res) => {
+  try {
+    const { userProfile, weekStartISO, weekEndISO, accessToken } = req.body;
+
+    // Step 1: Get busy blocks from Google Calendar if access token provided
+    let busyBlocks = [];
+    if (accessToken) {
+      const freeBusyResponse = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          timeMin: weekStartISO,
+          timeMax: weekEndISO,
+          items: [{ id: "primary" }]
+        })
+      });
+
+      if (freeBusyResponse.ok) {
+        const freeBusyData = await freeBusyResponse.json();
+        busyBlocks = freeBusyData.calendars?.primary?.busy || [];
+      }
+    }
+
+    // Step 2: Build NeuralSeek agent input
+    const agentInput = buildNeuroAgentPrompt(userProfile, weekStartISO, weekEndISO, busyBlocks);
+
+    // Step 3: Call NeuralSeek mAIstro
+    const nsResponse = await fetch(process.env.NS_API_ENDPOINT || "https://api.neuralseek.com/maistro_stream", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.NS_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        agent: "neuro-weekly-planner",
+        input: agentInput,
+        stream: false
+      })
+    });
+
+    if (!nsResponse.ok) {
+      throw new Error(`NeuralSeek API error: ${nsResponse.statusText}`);
+    }
+
+    const planData = await nsResponse.json();
+    
+    // Step 4: Parse and structure the response
+    const weeklyPlan = parseNeuralSeekResponse(planData, weekStartISO, weekEndISO);
+
+    // Step 5: Save plan to Supabase for retrieval
+    if (userProfile.userId) {
+      await supabase
+        .from("weekly_plans")
+        .insert({
+          user_id: userProfile.userId,
+          week_start: weekStartISO,
+          week_end: weekEndISO,
+          plan_data: weeklyPlan,
+          created_at: new Date().toISOString()
+        });
+    }
+
+    res.json(weeklyPlan);
+  } catch (err) {
+    console.error("Plan week error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Build the prompt for NeuralSeek agent with neurodivergent-friendly constraints
+ */
+function buildNeuroAgentPrompt(profile, weekStart, weekEnd, busyBlocks) {
+  return {
+    userProfile: profile,
+    weekRange: { start: weekStart, end: weekEnd },
+    busyBlocks,
+    constraints: {
+      // Neurodivergent-friendly rules
+      workoutDuration: profile.maxWorkoutMin || 40,
+      energyWindows: profile.energyWindows,
+      buffers: profile.bufferPolicy,
+      consistencyPreference: "same-time-daily", // Help with habit formation
+      fallbackEnabled: true, // Always provide micro-workout if day is packed
+      microStepsRequired: true,
+      alternativeOptionsRequired: true,
+      maxDecisionPoints: 2, // Two choices max to reduce overwhelm
+    },
+    instructions: `
+      You are planning a neurodivergent-friendly week for a user with ADHD/autism support needs.
+      
+      CRITICAL RULES:
+      1. Prefer the SAME 60-90 minute time window daily for workouts (habit formation).
+      2. Only schedule during declared energy windows: ${JSON.stringify(profile.energyWindows)}.
+      3. Add ${profile.bufferPolicy.before}min BEFORE and ${profile.bufferPolicy.after}min AFTER each event.
+      4. If a day is too packed, schedule a 10-15 min "movement snack" instead.
+      5. Never schedule within 60 min of usual bedtime (${profile.sleep.usualBed}).
+      6. Generate 3-5 micro-steps per activity (concrete, actionable).
+      7. Provide ONE alternative option per day (A/B choice only).
+      8. Dinner recipes: ≤45 min total, low sensory load (avoid ${profile.diet.avoid.join(", ")}).
+      9. Output strict JSON with these keys: timePlan, workoutPlan, dinnerPlan, groceryList.
+      
+      Activities user enjoys: ${profile.workoutLikes.join(", ")}
+      Diet style: ${profile.diet.style}
+    `
+  };
+}
+
+/**
+ * Parse NeuralSeek response into structured WeeklyPlan
+ */
+function parseNeuralSeekResponse(nsData, weekStart, weekEnd) {
+  // NeuralSeek should return Virtual KB output
+  // This is a simplified parser - adjust based on actual NS response format
+  
+  const output = nsData.virtualKB || nsData.output || {};
+  
+  return {
+    weekStart,
+    weekEnd,
+    timePlan: output.timePlan || { workoutBlocks: [], dinnerBlocks: [] },
+    workoutPlan: output.workoutPlan || [],
+    dinnerPlan: output.dinnerPlan || [],
+    groceryList: output.groceryList || [],
+    generatedAt: new Date().toISOString()
+  };
+}
+
+// ============================================================================
+// Weekly Plans Retrieval
+// ============================================================================
+
+app.get("/weekly-plan/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const { data, error } = await supabase
+      .from("weekly_plans")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ error: "No plan found" });
+      }
+      throw error;
+    }
+
+    res.json(data.plan_data);
+  } catch (err) {
+    console.error("Weekly plan retrieval error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// Health Check
+// ============================================================================
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// ============================================================================
+// Start Server
+// ============================================================================
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`🚀 FlowMind server running on http://localhost:${PORT}`);
+  console.log(`   - NeuralSeek: ${process.env.NS_API_KEY ? '✓ configured' : '✗ missing'}`);
+  console.log(`   - Supabase: ${process.env.SUPABASE_URL ? '✓ configured' : '✗ missing'}`);
+});
+
