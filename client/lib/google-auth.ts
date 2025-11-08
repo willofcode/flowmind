@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 
 // Configure Google Sign-In
 GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID, // Required for offline access
   iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
   scopes: [
     'https://www.googleapis.com/auth/calendar.readonly',
@@ -25,17 +26,32 @@ const REFRESH_TOKEN_KEY = 'google_refresh_token';
  */
 export async function signInWithGoogle(): Promise<string | null> {
   try {
-    await GoogleSignin.hasPlayServices();
+    // Check for Play Services (iOS will throw PLAY_SERVICES_NOT_AVAILABLE, which is expected)
+    try {
+      await GoogleSignin.hasPlayServices();
+    } catch (playServicesError: any) {
+      if (playServicesError.code !== statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        throw playServicesError;
+      }
+      // On iOS, PLAY_SERVICES_NOT_AVAILABLE is normal, continue
+      console.log('Running on iOS (no Play Services needed)');
+    }
     
-    const signInResult = await GoogleSignin.signIn();
+    // Sign in with Google
+    const userInfo = await GoogleSignin.signIn();
     
-    // Get tokens
+    // Check if sign-in was successful
+    if (!userInfo) {
+      console.log('Sign in returned no user info');
+      return null;
+    }
+    
+    // Get tokens after successful sign-in
     const tokens = await GoogleSignin.getTokens();
     
-    // Store tokens
+    // Store access token
     await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.accessToken);
     
-    // Note: Google Sign-In SDK manages refresh tokens internally
     console.log('✅ Signed in successfully');
     return tokens.accessToken;
   } catch (error: any) {
@@ -43,18 +59,8 @@ export async function signInWithGoogle(): Promise<string | null> {
       console.log('User cancelled sign in');
     } else if (error.code === statusCodes.IN_PROGRESS) {
       console.log('Sign in already in progress');
-    } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-      console.log('Play services not available (iOS - this is normal)');
-      // On iOS, this is expected - try signing in anyway
-      try {
-        await GoogleSignin.signIn();
-        const tokens = await GoogleSignin.getTokens();
-        await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.accessToken);
-        console.log('✅ Signed in successfully');
-        return tokens.accessToken;
-      } catch (retryError) {
-        console.error('Sign in retry error:', retryError);
-      }
+    } else if (error.code === 'getTokens') {
+      console.error('Failed to get tokens - user may not be signed in');
     } else {
       console.error('Sign in error:', error);
     }
@@ -67,7 +73,7 @@ export async function signInWithGoogle(): Promise<string | null> {
  */
 export async function getAccessToken(): Promise<string | null> {
   try {
-    // Check if we have a stored token
+    // Check if we have a stored token first
     const storedToken = await SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
     
     if (!storedToken) {
@@ -75,6 +81,7 @@ export async function getAccessToken(): Promise<string | null> {
     }
     
     // Try to get fresh tokens from SDK (auto-refreshes if needed)
+    // Only if user is actually signed in with Google SDK
     try {
       const tokens = await GoogleSignin.getTokens();
       
@@ -82,8 +89,9 @@ export async function getAccessToken(): Promise<string | null> {
       await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.accessToken);
       
       return tokens.accessToken;
-    } catch (error) {
-      // If SDK fails, return stored token
+    } catch (sdkError: any) {
+      // If getTokens fails (user not signed in with SDK), return stored token
+      console.log('Using stored token (SDK not available)');
       return storedToken;
     }
   } catch (error) {

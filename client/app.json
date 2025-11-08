@@ -44,7 +44,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID"
+          "iosUrlScheme": "com.googleusercontent.apps.940109485523-podr192et86foo0jl92nh1dn4pnveinf"
         }
       ]
     ],
