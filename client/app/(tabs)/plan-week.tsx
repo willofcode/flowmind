@@ -18,7 +18,7 @@ type PlanWeekPayload = {
 type PlanWeekResponse = Record<string, unknown>;
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
-const STORAGE_KEY = 'plan-week:last-plan';
+const STORAGE_KEY = 'plan-week.last-plan';
 
 const defaultPayload: PlanWeekPayload = {
   userProfile: {

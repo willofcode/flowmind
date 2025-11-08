@@ -21,6 +21,7 @@
     "expo-haptics": "~15.0.7",
     "expo-image": "~3.0.10",
     "expo-linking": "~8.0.8",
+    "expo-notifications": "^0.32.12",
     "expo-router": "~6.0.14",
     "expo-secure-store": "~15.0.7",
     "expo-splash-screen": "~31.0.10",
@@ -40,9 +41,10 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
-    "typescript": "~5.9.2",
     "eslint": "^9.25.0",
-    "eslint-config-expo": "~10.0.0"
+    "eslint-config-expo": "~10.0.0",
+    "expo-module-scripts": "^5.0.7",
+    "typescript": "~5.9.2"
   },
   "private": true
 }
