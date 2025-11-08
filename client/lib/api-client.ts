@@ -105,6 +105,40 @@ class ApiClient {
 
     return response.json();
   }
+
+  /**
+   * Call NeuralSeek Seek endpoint for knowledge base queries
+   */
+  async seek(question: string, context?: any): Promise<any> {
+    const response = await fetch(`${this.baseURL}/seek`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, context }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to call Seek: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Call NeuralSeek mAIstro endpoint for AI agent interactions
+   */
+  async mAIstro(prompt: string, context?: any, parameters?: any): Promise<any> {
+    const response = await fetch(`${this.baseURL}/maistro`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, context, parameters }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to call mAIstro: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
