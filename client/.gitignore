@@ -6,6 +6,9 @@ node_modules/
 # local env files
 .env
 
+# google service account keys
+GoogleService-Info.plist/
+
 # Expo
 .expo/
 dist/

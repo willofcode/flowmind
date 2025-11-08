@@ -26,32 +26,17 @@ const REFRESH_TOKEN_KEY = 'google_refresh_token';
  */
 export async function signInWithGoogle(): Promise<string | null> {
   try {
-    // Check for Play Services (iOS will throw PLAY_SERVICES_NOT_AVAILABLE, which is expected)
-    try {
-      await GoogleSignin.hasPlayServices();
-    } catch (playServicesError: any) {
-      if (playServicesError.code !== statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        throw playServicesError;
-      }
-      // On iOS, PLAY_SERVICES_NOT_AVAILABLE is normal, continue
-      console.log('Running on iOS (no Play Services needed)');
-    }
+    await GoogleSignin.hasPlayServices();
     
-    // Sign in with Google
-    const userInfo = await GoogleSignin.signIn();
+    const signInResult = await GoogleSignin.signIn();
     
-    // Check if sign-in was successful
-    if (!userInfo) {
-      console.log('Sign in returned no user info');
-      return null;
-    }
-    
-    // Get tokens after successful sign-in
+    // Get tokens
     const tokens = await GoogleSignin.getTokens();
     
-    // Store access token
+    // Store tokens
     await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.accessToken);
     
+    // Note: Google Sign-In SDK manages refresh tokens internally
     console.log('✅ Signed in successfully');
     return tokens.accessToken;
   } catch (error: any) {
@@ -59,8 +44,18 @@ export async function signInWithGoogle(): Promise<string | null> {
       console.log('User cancelled sign in');
     } else if (error.code === statusCodes.IN_PROGRESS) {
       console.log('Sign in already in progress');
-    } else if (error.code === 'getTokens') {
-      console.error('Failed to get tokens - user may not be signed in');
+    } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+      console.log('Play services not available (iOS - this is normal)');
+      // On iOS, this is expected - try signing in anyway
+      try {
+        await GoogleSignin.signIn();
+        const tokens = await GoogleSignin.getTokens();
+        await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.accessToken);
+        console.log('✅ Signed in successfully');
+        return tokens.accessToken;
+      } catch (retryError) {
+        console.error('Sign in retry error:', retryError);
+      }
     } else {
       console.error('Sign in error:', error);
     }
