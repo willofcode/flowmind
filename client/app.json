@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "client",
-    "slug": "client",
+    "name": "FlowMind",
+    "slug": "flowmind",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "client",
+    "scheme": "flowmind",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.flowmind",
+      "bundleIdentifier": "com.willofcode.flowmind",
       "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
@@ -42,13 +42,11 @@
         }
       ],
       [
-        "expo-auth-session",
+        "@react-native-google-signin/google-signin",
         {
-          "scheme": "com.yourcompany.flowmind"
+          "iosUrlScheme": "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID"
         }
-      ],
-      "expo-secure-store",
-      "expo-web-browser"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
