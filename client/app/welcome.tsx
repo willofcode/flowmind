@@ -16,15 +16,20 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
+import { Audio } from 'expo-av';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getCurrentCalendarUser, isSignedInToGoogleCalendar } from '@/lib/google-calendar-auth';
 import { apiClient } from '@/lib/api-client';
+import { transcribeAudio, validateAudioFile, mockTranscription } from '@/lib/voice-transcription';
 
 const { width, height } = Dimensions.get('window');
 
@@ -42,9 +47,23 @@ export default function WelcomeScreen() {
   const [thoughtInput, setThoughtInput] = useState('');
   const [showTextInput, setShowTextInput] = useState(!conversationMode); // Hide in conversation mode initially
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Conversation state
+  const [conversationHistory, setConversationHistory] = useState<any[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showResponse, setShowResponse] = useState(false);
+  const [aiResponse, setAiResponse] = useState<any>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingTimer = useRef<any>(null);
 
   // TextInput ref for proper focus management
   const textInputRef = useRef<TextInput>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   // Animation values
   const circleScale = useRef(new Animated.Value(0)).current;
@@ -198,6 +217,242 @@ export default function WelcomeScreen() {
     }
   };
 
+  // Voice recording functions
+  const startRecording = async () => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      
+      // Request permissions
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Required', 'Please enable microphone access to record voice messages.');
+        return;
+      }
+
+      // Configure audio mode
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      // Start recording
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      
+      setRecording(recording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      // Start timer
+      recordingTimer.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+      console.log('🎤 Recording started');
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      Alert.alert('Recording Error', 'Unable to start recording. Please try again.');
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      if (!recording) return;
+
+      // Stop timer
+      if (recordingTimer.current) {
+        clearInterval(recordingTimer.current);
+        recordingTimer.current = null;
+      }
+
+      setIsRecording(false);
+      await recording.stopAndUnloadAsync();
+      
+      const uri = recording.getURI();
+      console.log('🎤 Recording stopped, URI:', uri);
+
+      setRecording(null);
+
+      // Send to transcription (mock for now)
+      if (uri) {
+        await sendVoiceMessage(uri);
+      }
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+    }
+  };
+
+  const sendVoiceMessage = async (audioUri: string) => {
+    setIsProcessing(true);
+    
+    try {
+      console.log('🎤 Processing voice message...');
+      
+      // Validate audio file
+      validateAudioFile(audioUri);
+      
+      // Transcribe audio using OpenAI Whisper
+      // Falls back to mock if API key not configured
+      const transcriptionResult = await transcribeAudio(audioUri);
+      
+      console.log('📝 Transcription:', transcriptionResult.text);
+      console.log('⏱️  Duration:', transcriptionResult.duration, 'seconds');
+      
+      // Send transcribed text to conversation API
+      await sendConversationMessage(transcriptionResult.text, 'voice');
+    } catch (error) {
+      console.error('Failed to process voice message:', error);
+      
+      // Fallback to mock transcription on error
+      console.log('⚠️  Using mock transcription as fallback');
+      const fallbackResult = mockTranscription(recordingDuration);
+      await sendConversationMessage(fallbackResult.text, 'voice');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const sendConversationMessage = async (message: string, inputType: 'text' | 'voice' = 'text') => {
+    if (!message.trim()) return;
+
+    setIsProcessing(true);
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    try {
+      // Get user ID (use email as fallback)
+      const userId = user?.sub || user?.email || 'anonymous';
+
+      // Start conversation if needed
+      let currentConversationId = conversationId;
+      if (!currentConversationId) {
+        const startResponse = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/conversation/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId }),
+        });
+        const startData = await startResponse.json();
+        currentConversationId = startData.conversationId;
+        setConversationId(currentConversationId);
+      }
+
+      // Send message for analysis
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/conversation/analyze-sentiment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          conversationId: currentConversationId,
+          transcription: message,
+          inputType,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze message');
+      }
+
+      const data = await response.json();
+      console.log('💬 AI Response:', data);
+
+      // Add to conversation history
+      const newHistory = [
+        ...conversationHistory,
+        { role: 'user', message, timestamp: new Date().toISOString() },
+        { 
+          role: 'assistant', 
+          message: data.conversationalResponse,
+          moodScore: data.moodScore,
+          recommendations: data.recommendations,
+          timestamp: new Date().toISOString()
+        },
+      ];
+      
+      setConversationHistory(newHistory);
+      setAiResponse(data);
+      setShowResponse(true);
+
+      // Save to local storage
+      await saveConversationHistory(userId, newHistory);
+
+      // Play TTS if available
+      if (data.ttsAudioUrl) {
+        await playTTSResponse(data.ttsAudioUrl);
+      }
+
+      // Clear input
+      setThoughtInput('');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const playTTSResponse = async (audioUrl: string) => {
+    try {
+      // Unload previous sound
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { shouldPlay: true }
+      );
+
+      soundRef.current = sound;
+      await sound.playAsync();
+    } catch (error) {
+      console.error('Failed to play TTS:', error);
+    }
+  };
+
+  const saveConversationHistory = async (userId: string, history: any[]) => {
+    try {
+      await SecureStore.setItemAsync(
+        `conversation_history_${userId}`,
+        JSON.stringify(history)
+      );
+    } catch (error) {
+      console.error('Failed to save conversation history:', error);
+    }
+  };
+
+  const loadConversationHistory = async (userId: string) => {
+    try {
+      const stored = await SecureStore.getItemAsync(`conversation_history_${userId}`);
+      if (stored) {
+        setConversationHistory(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Failed to load conversation history:', error);
+    }
+  };
+
+  // Load conversation history when in conversation mode
+  useEffect(() => {
+    if (conversationMode && user) {
+      const userId = user?.sub || user?.email || 'anonymous';
+      loadConversationHistory(userId);
+    }
+  }, [conversationMode, user]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+      if (recordingTimer.current) {
+        clearInterval(recordingTimer.current);
+      }
+    };
+  }, []);
+
   const handleContinue = async () => {
     if (isReturningUser) {
       // Returning user - save thought/feeling and navigate
@@ -337,66 +592,206 @@ export default function WelcomeScreen() {
               onChangeText={setThoughtInput}
               multiline
               numberOfLines={3}
+              editable={!isProcessing}
             />
-            <Pressable
-              style={[styles.sendButton, { backgroundColor: colors.primary }]}
-              onPress={async () => {
-                if (thoughtInput.trim()) {
-                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  // TODO: Send to conversational AI endpoint
-                  console.log('Conversation input:', thoughtInput);
-                  setThoughtInput('');
-                }
-              }}
-            >
-              <IconSymbol name="paperplane.fill" size={20} color="#FFFFFF" />
-            </Pressable>
+            <View style={styles.inputActions}>
+              {/* Voice input button */}
+              <Pressable
+                style={[styles.voiceButton, { 
+                  backgroundColor: isRecording ? colors.error : colors.surfaceElevated 
+                }]}
+                onPress={isRecording ? stopRecording : startRecording}
+                disabled={isProcessing}
+              >
+                {isRecording ? (
+                  <View style={styles.recordingIndicator}>
+                    <IconSymbol name="stop.circle.fill" size={24} color="#FFFFFF" />
+                    <Text style={styles.recordingTime}>{recordingDuration}s</Text>
+                  </View>
+                ) : (
+                  <IconSymbol name="mic.fill" size={20} color={colors.text} />
+                )}
+              </Pressable>
+
+              {/* Send button */}
+              <Pressable
+                style={[styles.sendButton, { 
+                  backgroundColor: colors.primary,
+                  opacity: isProcessing || !thoughtInput.trim() ? 0.5 : 1 
+                }]}
+                onPress={() => sendConversationMessage(thoughtInput, 'text')}
+                disabled={isProcessing || !thoughtInput.trim()}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol name="paperplane.fill" size={20} color="#FFFFFF" />
+                )}
+              </Pressable>
+            </View>
           </Animated.View>
 
           {/* Floating Icon - Only show when collapsed */}
           {!isExpanded && (
-            <Animated.View 
-              style={[styles.floatingIcon, { opacity: contentOpacity }]}
-            >
-              <Pressable 
-                style={[styles.floatingButton, { backgroundColor: colors.primary }]}
-                onPress={toggleTextInput}
+            <>
+              <Animated.View 
+                style={[styles.floatingIcon, { opacity: contentOpacity }]}
               >
-                <IconSymbol name="text.bubble" size={28} color="#FFFFFF" />
-              </Pressable>
-            </Animated.View>
+                <Pressable 
+                  style={[styles.floatingButton, { backgroundColor: colors.primary }]}
+                  onPress={toggleTextInput}
+                >
+                  <IconSymbol name="text.bubble" size={28} color="#FFFFFF" />
+                </Pressable>
+              </Animated.View>
+              
+              {/* Close button to return to browse */}
+              <Animated.View 
+                style={[styles.closeButtonContainer, { opacity: contentOpacity }]}
+              >
+                <Pressable 
+                  style={[styles.closeButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={async () => {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.back();
+                  }}
+                >
+                  <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
+                </Pressable>
+              </Animated.View>
+            </>
           )}
         </>
       )}
 
-      {/* Skip Button */}
-      <Animated.View style={[styles.skipContainer, { opacity: contentOpacity }]}>
-        <Pressable onPress={handleContinue}>
-          <Text style={[styles.skipText, { color: colors.textSecondary }]}>
-            {isReturningUser ? 'Continue to app →' : 'Skip for now →'}
-          </Text>
-        </Pressable>
-        
-        {/* Calm Breathing Session */}
-        <Pressable 
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push({
-              pathname: '/calm-session',
-              params: {
-                protocol: 'meditation',
-                duration: '5',
-                fromWelcome: 'true'
-              }
-            });
-          }}
-          style={{ marginTop: 16 }}
-        >
-          <Text style={[styles.calmSessionText, { color: colors.primary }]}>
-            🧘 Start a calm breathing session
-          </Text>
-        </Pressable>
-      </Animated.View>
+      {/* Skip Button - Only show in normal mode */}
+      {!conversationMode && (
+        <Animated.View style={[styles.skipContainer, { opacity: contentOpacity }]}>
+          <Pressable onPress={handleContinue}>
+            <Text style={[styles.skipText, { color: colors.textSecondary }]}>
+              {isReturningUser ? 'Continue to app →' : 'Skip for now →'}
+            </Text>
+          </Pressable>
+          
+          {/* Calm Breathing Session */}
+          <Pressable 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push({
+                pathname: '/calm-session',
+                params: {
+                  protocol: 'meditation',
+                  duration: '5',
+                  fromWelcome: 'true'
+                }
+              });
+            }}
+            style={{ marginTop: 16 }}
+          >
+            <Text style={[styles.calmSessionText, { color: colors.primary }]}>
+              🧘 Start a calm breathing session
+            </Text>
+          </Pressable>
+        </Animated.View>
+      )}
+
+      {/* AI Response Modal */}
+      <Modal
+        visible={showResponse}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowResponse(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                AI Insights
+              </Text>
+              <Pressable onPress={() => setShowResponse(false)}>
+                <IconSymbol name="xmark.circle.fill" size={28} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {aiResponse && (
+                <>
+                  {/* Mood Score */}
+                  <View style={styles.moodSection}>
+                    <Text style={[styles.moodLabel, { color: colors.textSecondary }]}>
+                      Mood Score
+                    </Text>
+                    <View style={styles.moodScoreContainer}>
+                      <Text style={[styles.moodScore, { color: colors.primary }]}>
+                        {aiResponse.moodScore}/10
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* AI Response */}
+                  <View style={styles.responseSection}>
+                    <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                      Response
+                    </Text>
+                    <Text style={[styles.responseText, { color: colors.text }]}>
+                      {aiResponse.conversationalResponse}
+                    </Text>
+                  </View>
+
+                  {/* Recommendations */}
+                  {aiResponse.recommendations && aiResponse.recommendations.length > 0 && (
+                    <View style={styles.recommendationsSection}>
+                      <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                        Recommendations
+                      </Text>
+                      {aiResponse.recommendations.map((rec: string, index: number) => (
+                        <View key={index} style={styles.recommendationItem}>
+                          <Text style={[styles.bullet, { color: colors.primary }]}>•</Text>
+                          <Text style={[styles.recommendationText, { color: colors.text }]}>
+                            {rec}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Conversation History */}
+                  {conversationHistory.length > 0 && (
+                    <View style={styles.historySection}>
+                      <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                        Recent Conversation
+                      </Text>
+                      {conversationHistory.slice(-4).map((turn, index) => (
+                        <View 
+                          key={index} 
+                          style={[
+                            styles.historyItem,
+                            { backgroundColor: turn.role === 'user' ? colors.primaryLight : colors.surfaceElevated }
+                          ]}
+                        >
+                          <Text style={[styles.historyRole, { color: colors.textSecondary }]}>
+                            {turn.role === 'user' ? 'You' : 'AI'}
+                          </Text>
+                          <Text style={[styles.historyMessage, { color: colors.text }]}>
+                            {turn.message}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+            </ScrollView>
+
+            <Pressable
+              style={[styles.modalCloseButton, { backgroundColor: colors.primary }]}
+              onPress={() => setShowResponse(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Continue</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -493,7 +888,7 @@ const styles = StyleSheet.create({
   },
   expandableInputContainer: {
     position: 'absolute',
-    bottom: CalmSpacing.xl,
+    bottom: CalmSpacing.xxl + CalmSpacing.lg,
     width: width - CalmSpacing.xl * 2,
     borderRadius: 20,
     borderWidth: 2,
@@ -533,8 +928,8 @@ const styles = StyleSheet.create({
   },
   floatingIcon: {
     position: 'absolute',
-    bottom: CalmSpacing.xl,
-    right: CalmSpacing.xl,
+    bottom: CalmSpacing.xxl,
+    alignSelf: 'center',
   },
   floatingButton: {
     width: 64,
@@ -547,5 +942,152 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 10,
+  },
+  closeButtonContainer: {
+    position: 'absolute',
+    top: CalmSpacing.xl,
+    left: CalmSpacing.lg,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  inputActions: {
+    flexDirection: 'row',
+    gap: CalmSpacing.sm,
+    alignItems: 'center',
+  },
+  voiceButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingIndicator: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  recordingTime: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: CalmSpacing.lg,
+    paddingTop: CalmSpacing.lg,
+    paddingBottom: CalmSpacing.xxl,
+    maxHeight: height * 0.85,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: CalmSpacing.lg,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  modalBody: {
+    flex: 1,
+    marginBottom: CalmSpacing.lg,
+  },
+  moodSection: {
+    marginBottom: CalmSpacing.lg,
+    alignItems: 'center',
+  },
+  moodLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: CalmSpacing.sm,
+  },
+  moodScoreContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 4,
+    borderColor: CalmColors.light.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moodScore: {
+    fontSize: 32,
+    fontWeight: '700',
+  },
+  responseSection: {
+    marginBottom: CalmSpacing.lg,
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: CalmSpacing.sm,
+  },
+  responseText: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  recommendationsSection: {
+    marginBottom: CalmSpacing.lg,
+  },
+  recommendationItem: {
+    flexDirection: 'row',
+    marginBottom: CalmSpacing.sm,
+    paddingLeft: CalmSpacing.sm,
+  },
+  bullet: {
+    fontSize: 20,
+    marginRight: CalmSpacing.sm,
+    marginTop: -2,
+  },
+  recommendationText: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  historySection: {
+    marginBottom: CalmSpacing.lg,
+  },
+  historyItem: {
+    padding: CalmSpacing.md,
+    borderRadius: 12,
+    marginBottom: CalmSpacing.sm,
+  },
+  historyRole: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  historyMessage: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  modalCloseButton: {
+    height: 56,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

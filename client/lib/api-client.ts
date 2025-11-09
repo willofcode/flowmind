@@ -465,6 +465,111 @@ class ApiClient {
 
     return response.json();
   }
+
+  /**
+   * Start a new conversation session
+   */
+  async startConversation(userId: string): Promise<{ conversationId: string }> {
+    const response = await fetch(`${this.baseURL}/conversation/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Start conversation failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Analyze sentiment with conversational AI
+   */
+  async analyzeSentiment(params: {
+    userId: string;
+    conversationId?: string;
+    transcription: string;
+    inputType: 'text' | 'voice';
+  }): Promise<{
+    conversationalResponse: string;
+    moodScore: number;
+    energyLevel: string;
+    stressLevel: string;
+    recommendations: string[];
+    ttsAudioUrl?: string;
+  }> {
+    const response = await fetch(`${this.baseURL}/conversation/analyze-sentiment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Analyze sentiment failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get conversation history
+   */
+  async getConversationHistory(conversationId: string): Promise<{
+    conversation: any[];
+    totalTurns: number;
+  }> {
+    const response = await fetch(
+      `${this.baseURL}/conversation/${conversationId}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Get conversation failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Store mood check-in
+   */
+  async storeMoodCheckIn(params: {
+    userId: string;
+    conversationId: string;
+    moodScore: number;
+    energyLevel: string;
+    stressLevel: string;
+    emotionalState: any;
+  }): Promise<{ success: boolean }> {
+    const response = await fetch(`${this.baseURL}/conversation/store-mood`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Store mood failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Generate TTS audio for text
+   */
+  async generateTTS(text: string): Promise<{ audioUrl: string }> {
+    const response = await fetch(`${this.baseURL}/conversation/generate-tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Generate TTS failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
