@@ -14,6 +14,7 @@ import Animated, {
   withSpring,
   runOnJS,
 } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import type { DayTask } from '@/types/neuro-profile';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
@@ -31,12 +32,28 @@ const SWIPE_THRESHOLD = 80;
 export function TaskBubble({ task, onAccept, onSkip, reducedAnimation = false }: TaskBubbleProps) {
   const colorScheme = useColorScheme();
   const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
+  const router = useRouter();
   
   const translateX = useSharedValue(0);
 
   const handleAccept = (taskId: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onAccept(taskId);
+    
+    // If it's a breathing/meditation activity, launch calm session instead
+    if (task.type === 'BREATHING' || task.isBreathing) {
+      // Extract duration from task (default 5 minutes)
+      const durationMatch = task.title.match(/(\d+)-min/);
+      const duration = durationMatch ? parseInt(durationMatch[1]) : 5;
+      
+      // Determine protocol based on title keywords
+      let protocol = 'meditation';
+      if (task.title.toLowerCase().includes('box')) protocol = 'box';
+      if (task.title.toLowerCase().includes('rescue')) protocol = 'rescue';
+      
+      router.push(`/calm-session?protocol=${protocol}&duration=${duration}&fromWelcome=false`);
+    } else {
+      onAccept(taskId);
+    }
   };
 
   const confirmSkip = (taskId: string) => {
@@ -112,14 +129,14 @@ export function TaskBubble({ task, onAccept, onSkip, reducedAnimation = false }:
           ]}
         >
           <View style={styles.content}>
-            <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+            <Text style={[styles.title, { color: '#FFFFFF' }]} numberOfLines={1}>
               {task.title}
             </Text>
-            <Text style={[styles.time, { color: colors.textSecondary }]}>
+            <Text style={[styles.time, { color: 'rgba(255, 255, 255, 0.9)' }]}>
               {task.startTime} – {task.endTime}
             </Text>
             {task.description && (
-              <Text style={[styles.description, { color: colors.textSecondary }]} numberOfLines={2}>
+              <Text style={[styles.description, { color: 'rgba(255, 255, 255, 0.85)' }]} numberOfLines={2}>
                 {task.description}
               </Text>
             )}
@@ -137,7 +154,7 @@ const styles = StyleSheet.create({
   bubble: {
     paddingVertical: CalmSpacing.md,
     paddingHorizontal: CalmSpacing.lg,
-    borderRadius: 999, // Fully rounded oval
+    borderRadius: 16, // Rounded rectangular shape
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

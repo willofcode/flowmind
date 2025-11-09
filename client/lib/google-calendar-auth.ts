@@ -92,6 +92,11 @@ export async function signInWithGoogleCalendar(): Promise<{
     await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, tokens.accessToken);
     await SecureStore.setItemAsync(STORAGE_KEYS.USER_INFO, JSON.stringify(signInResult.data?.user));
     
+    // Store user email for sync polling
+    if (signInResult.data?.user.email) {
+      await SecureStore.setItemAsync('google_calendar_user_email', signInResult.data.user.email);
+    }
+    
     // Calculate expiry (tokens typically last 1 hour)
     const expiryTime = Date.now() + (3600 * 1000); // 1 hour from now
     await SecureStore.setItemAsync(STORAGE_KEYS.TOKEN_EXPIRY, expiryTime.toString());

@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import * as SecureStore from 'expo-secure-store';
 import { StreakCard } from '@/components/streak-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -38,23 +39,6 @@ export default function BrowseScreen() {
   
   const [streak] = useState<StreakData>(mockStreak);
   const [groceryItems, setGroceryItems] = useState(mockGroceryList);
-  const [calendarConnected, setCalendarConnected] = useState(false);
-
-  // Check if Google Calendar is connected on mount
-  useEffect(() => {
-    async function checkCalendarConnection() {
-      const connected = await SecureStore.getItemAsync('google_calendar_connected');
-      setCalendarConnected(connected === 'true');
-    }
-    checkCalendarConnection();
-  }, []);
-
-  const handleCalendarConnectionChange = (connected: boolean, token?: string) => {
-    setCalendarConnected(connected);
-    if (connected) {
-      console.log('✅ Calendar connected with token:', token?.substring(0, 20) + '...');
-    }
-  };
 
   const handleStartBreathing = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -67,8 +51,12 @@ export default function BrowseScreen() {
           text: 'Box Breathing (4-4-4-4)',
           onPress: () => {
             router.push({
-              pathname: '/breathing-session',
-              params: { protocol: 'box' },
+              pathname: '/calm-session',
+              params: { 
+                protocol: 'box',
+                duration: '5',
+                fromWelcome: 'false'
+              },
             });
           },
         },
@@ -76,8 +64,25 @@ export default function BrowseScreen() {
           text: 'Rescue Breath (4-7-8)',
           onPress: () => {
             router.push({
-              pathname: '/breathing-session',
-              params: { protocol: 'rescue' },
+              pathname: '/calm-session',
+              params: { 
+                protocol: 'rescue',
+                duration: '5',
+                fromWelcome: 'false'
+              },
+            });
+          },
+        },
+        {
+          text: 'Meditation (5-5)',
+          onPress: () => {
+            router.push({
+              pathname: '/calm-session',
+              params: { 
+                protocol: 'meditation',
+                duration: '5',
+                fromWelcome: 'false'
+              },
             });
           },
         },
@@ -97,8 +102,15 @@ export default function BrowseScreen() {
 
   const handleCopyGroceryList = async () => {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const groceryText = groceryItems
+      .map(({ item, qty, unit, checked }) => {
+        const amount = [qty, unit].filter(Boolean).join(' ').trim();
+        const label = amount.length ? `${amount} ${item}` : item;
+        return `${checked ? '✓' : '•'} ${label}`;
+      })
+      .join('\n');
+    await Clipboard.setStringAsync(groceryText);
     Alert.alert('Copied!', 'Grocery list copied to clipboard');
-    // TODO: Implement actual clipboard copy
   };
 
   return (
@@ -121,21 +133,9 @@ export default function BrowseScreen() {
         {/* Streak Card */}
         <StreakCard streak={streak} />
 
-        {/* Calendar Status - Show connection status only (no button) */}
-        {calendarConnected && (
-          <View style={styles.section}>
-            <View style={[styles.statusCard, { backgroundColor: colors.surface, borderColor: colors.success }]}>
-              <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
-              <Text style={[styles.statusText, { color: colors.text }]}>
-                ✓ Google Calendar connected - AI planning active
-              </Text>
-            </View>
-          </View>
-        )}
-
         {/* Breathing Tool Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+        <View style={[styles.section, { marginTop: CalmSpacing.md }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: CalmSpacing.md }]}>
             Breathe & Calm
           </Text>
           <Pressable
@@ -160,8 +160,43 @@ export default function BrowseScreen() {
           </Pressable>
         </View>
 
+        {/* Conversation Tool Section */}
+        <View style={[styles.section, { marginTop: CalmSpacing.lg }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: CalmSpacing.md }]}>
+            Talk & Reflect
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.toolCard,
+              {
+                backgroundColor: colors.primaryLight,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push({
+                pathname: '/welcome',
+                params: { 
+                  conversationMode: 'true',
+                },
+              });
+            }}
+          >
+            <View style={styles.toolCardContent}>
+              <IconSymbol name="bubble.left.and.bubble.right" size={32} color="#FFFFFF" />
+              <View style={styles.toolTextContainer}>
+                <Text style={styles.toolTitle}>Mood Conversation</Text>
+                <Text style={styles.toolDescription}>
+                  Voice or text check-in with AI support
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+        </View>
+
         {/* Grocery List Section */}
-        <View style={styles.section}>
+        <View style={[styles.section, { marginTop: CalmSpacing.lg }]}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               This Week's Groceries

@@ -96,6 +96,57 @@ router.post("/webhook", async (req, res) => {
 });
 
 /**
+ * GET /calendar-sync/check-updates
+ * 
+ * Check if calendar has been updated (for polling)
+ * 
+ * Query Parameters:
+ *   - userId: string (required)
+ *   - since: ISO timestamp (optional) - check for updates since this time
+ * 
+ * Response:
+ *   - hasUpdates: boolean
+ *   - latestUpdate: timestamp
+ *   - eventCount: number
+ */
+router.get("/check-updates", async (req, res) => {
+  try {
+    const { userId, since } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: "Missing userId parameter" });
+    }
+
+    // Check for sync events since the given time
+    const sinceTime = since ? new Date(since) : new Date(Date.now() - 60000); // Default: last minute
+
+    const { data: syncEvents, error } = await supabase
+      .from('calendar_sync_events')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('triggered_at', sinceTime.toISOString())
+      .order('triggered_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Database error: ${error.message}`);
+    }
+
+    const hasUpdates = syncEvents && syncEvents.length > 0;
+    const latestUpdate = hasUpdates ? syncEvents[0].triggered_at : null;
+
+    res.json({
+      hasUpdates,
+      latestUpdate,
+      eventCount: syncEvents?.length || 0
+    });
+
+  } catch (error) {
+    console.error('❌ Check updates error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /calendar-sync/sync
  * 
  * Manually trigger calendar sync

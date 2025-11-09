@@ -17,6 +17,8 @@ import feedbackRoutes from "./src/routes/feedback.routes.js";
 import healthRoutes from "./src/routes/health.routes.js";
 import calendarRoutes from "./src/routes/calendar.routes.js";
 import calendarSyncRoutes from "./src/routes/calendar-sync.routes.js";
+import agenticRoutes from "./src/routes/agentic.routes.js";
+import conversationRoutes from "./src/routes/conversation.routes.js";
 
 // Load environment variables
 dotenv.config();
@@ -83,6 +85,18 @@ app.use("/calendar", calendarRoutes);
  * Handle calendar synchronization and webhooks
  */
 app.use("/calendar-sync", calendarSyncRoutes);
+
+/**
+ * Agentic Activities Routes
+ * AI-generated wellness activities using NeuralSeek mAIstro
+ */
+app.use("/agentic", agenticRoutes);
+
+/**
+ * Conversational Mood Tracking Routes
+ * STT + Sentiment Analysis + Schedule Correlation + TTS responses
+ */
+app.use("/conversation", conversationRoutes);
 
 // ============================================================================
 // Error Handling

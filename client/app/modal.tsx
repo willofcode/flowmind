@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as SecureStore from 'expo-secure-store';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -19,10 +20,12 @@ export default function ProfileModal() {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState(false);
 
   // Load user data on mount
   useEffect(() => {
     loadUserData();
+    checkCalendarConnection();
   }, []);
 
   const loadUserData = async () => {
@@ -37,6 +40,11 @@ export default function ProfileModal() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const checkCalendarConnection = async () => {
+    const connected = await SecureStore.getItemAsync('google_calendar_connected');
+    setCalendarConnected(connected === 'true');
   };
 
   const handleLogout = async () => {
@@ -134,6 +142,16 @@ export default function ProfileModal() {
           )}
         </View>
       </View>
+
+      {/* Calendar Status */}
+      {calendarConnected && (
+        <View style={[styles.calendarStatusCard, { backgroundColor: colors.surface, borderColor: colors.success }]}>
+          <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
+          <Text style={[styles.calendarStatusText, { color: colors.text }]}>
+            ✓ Google Calendar connected - AI planning active
+          </Text>
+        </View>
+      )}
 
       {/* Settings Section */}
       <View style={styles.settingsSection}>
@@ -256,6 +274,20 @@ const styles = StyleSheet.create({
   verifiedText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  calendarStatusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CalmSpacing.md,
+    padding: CalmSpacing.lg,
+    borderRadius: 12,
+    borderWidth: 2,
+    marginBottom: CalmSpacing.lg,
+  },
+  calendarStatusText: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
   },
   settingsSection: {
     marginBottom: CalmSpacing.xl,

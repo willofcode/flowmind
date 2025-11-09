@@ -14,8 +14,10 @@ import {
   Animated,
   Dimensions,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -28,6 +30,9 @@ const { width, height } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const conversationMode = params.conversationMode === 'true';
+  
   const colorScheme = useColorScheme();
   const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
   
@@ -35,7 +40,8 @@ export default function WelcomeScreen() {
   const [userName, setUserName] = useState('');
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [thoughtInput, setThoughtInput] = useState('');
-  const [showTextInput, setShowTextInput] = useState(true);
+  const [showTextInput, setShowTextInput] = useState(!conversationMode); // Hide in conversation mode initially
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // TextInput ref for proper focus management
   const textInputRef = useRef<TextInput>(null);
@@ -48,6 +54,7 @@ export default function WelcomeScreen() {
   const glowPulse = useRef(new Animated.Value(1)).current;
   const glowOpacity = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
+  const inputHeight = useRef(new Animated.Value(0)).current; // For expandable input
 
   useEffect(() => {
     loadUserData();
@@ -69,14 +76,16 @@ export default function WelcomeScreen() {
     }
   };
 
-  // Delay focus to avoid iOS simulator warning
+  // Delay focus to avoid iOS simulator warning (only if not in conversation mode)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      textInputRef.current?.focus();
-    }, 800); // Focus after animations start
+    if (!conversationMode) {
+      const timer = setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 800); // Focus after animations start
 
-    return () => clearTimeout(timer);
-  }, []);
+      return () => clearTimeout(timer);
+    }
+  }, [conversationMode]);
 
   const checkReturningUser = async () => {
     const profileCompleted = await SecureStore.getItemAsync('profile_completed');
@@ -172,6 +181,23 @@ export default function WelcomeScreen() {
     outputRange: ['rgba(74, 155, 175, 0.2)', 'rgba(122, 207, 125, 0.4)'],
   });
 
+  const toggleTextInput = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsExpanded(!isExpanded);
+    
+    Animated.spring(inputHeight, {
+      toValue: isExpanded ? 0 : 1,
+      useNativeDriver: false,
+      tension: 50,
+      friction: 7,
+    }).start();
+    
+    // Focus input when expanding
+    if (!isExpanded) {
+      setTimeout(() => textInputRef.current?.focus(), 300);
+    }
+  };
+
   const handleContinue = async () => {
     if (isReturningUser) {
       // Returning user - save thought/feeling and navigate
@@ -183,7 +209,7 @@ export default function WelcomeScreen() {
       }
       
       // Navigate to main app
-      router.replace('/(tabs)');
+      router.replace('/today');
     } else {
       // New user - validate name and save profile
       if (!userName.trim()) {
@@ -198,7 +224,7 @@ export default function WelcomeScreen() {
       await SecureStore.setItemAsync('user_name', userName);
       
       // Navigate to main app
-      router.replace('/(tabs)');
+      router.replace('/today');
     }
   };  return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -228,50 +254,120 @@ export default function WelcomeScreen() {
         </Animated.View>
       </View>
 
-      {/* Welcome Text */}
-      <Animated.View style={[styles.textContainer, { opacity: contentOpacity }]}>
-        <Text style={[styles.welcomeText, { color: colors.text }]}>
-          {isReturningUser 
-            ? `Welcome back, ${userName.split(' ')[0]}!`
-            : `Welcome${userName ? `, ${userName.split(' ')[0]}` : ''}!`}
-        </Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {isReturningUser
-            ? 'How are you feeling today?'
-            : "Let's create your neurodivergent-friendly profile"}
-        </Text>
-      </Animated.View>
+      {/* Welcome Text - Only show if NOT in conversation mode */}
+      {!conversationMode && (
+        <Animated.View style={[styles.textContainer, { opacity: contentOpacity }]}>
+          <Text style={[styles.welcomeText, { color: colors.text }]}>
+            {isReturningUser 
+              ? `Welcome back, ${userName.split(' ')[0]}!`
+              : `Welcome${userName ? `, ${userName.split(' ')[0]}` : ''}!`}
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            {isReturningUser
+              ? 'How are you feeling today?'
+              : "Let's create your neurodivergent-friendly profile"}
+          </Text>
+        </Animated.View>
+      )}
 
-      {/* Text Input */}
-      <Animated.View 
-        style={[
-          styles.textInputContainer, 
-          { 
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-            opacity: contentOpacity,
-          }
-        ]}
-      >
-        <TextInput
-          ref={textInputRef}
-          style={[styles.textInput, { color: colors.text }]}
-          placeholder={isReturningUser ? "Share what's on your mind..." : "What's your name?"}
-          placeholderTextColor={colors.textTertiary}
-          value={isReturningUser ? thoughtInput : userName}
-          onChangeText={isReturningUser ? setThoughtInput : setUserName}
-          returnKeyType="done"
-          onSubmitEditing={handleContinue}
-          multiline={isReturningUser}
-          numberOfLines={isReturningUser ? 3 : 1}
-        />
-        <Pressable
-          style={[styles.continueButton, { backgroundColor: colors.primary }]}
-          onPress={handleContinue}
+      {/* Text Input - Normal mode */}
+      {!conversationMode && (
+        <Animated.View 
+          style={[
+            styles.textInputContainer, 
+            { 
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              opacity: contentOpacity,
+            }
+          ]}
         >
-          <IconSymbol name="arrow.right" size={24} color="#FFFFFF" />
-        </Pressable>
-      </Animated.View>
+          <TextInput
+            ref={textInputRef}
+            style={[styles.textInput, { color: colors.text }]}
+            placeholder={isReturningUser ? "Share what's on your mind..." : "What's your name?"}
+            placeholderTextColor={colors.textTertiary}
+            value={isReturningUser ? thoughtInput : userName}
+            onChangeText={isReturningUser ? setThoughtInput : setUserName}
+            returnKeyType="done"
+            onSubmitEditing={handleContinue}
+            multiline={isReturningUser}
+            numberOfLines={isReturningUser ? 3 : 1}
+          />
+          <Pressable
+            style={[styles.continueButton, { backgroundColor: colors.primary }]}
+            onPress={handleContinue}
+          >
+            <IconSymbol name="arrow.right" size={24} color="#FFFFFF" />
+          </Pressable>
+        </Animated.View>
+      )}
+
+      {/* Expandable Text Input - Conversation mode */}
+      {conversationMode && (
+        <>
+          <Animated.View 
+            style={[
+              styles.expandableInputContainer,
+              { 
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                height: inputHeight.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 180],
+                }),
+                opacity: inputHeight,
+              }
+            ]}
+          >
+            <View style={styles.expandableHeader}>
+              <Text style={[styles.expandableTitle, { color: colors.text }]}>
+                How are you feeling?
+              </Text>
+              <Pressable onPress={toggleTextInput}>
+                <IconSymbol name="xmark.circle.fill" size={24} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+            <TextInput
+              ref={textInputRef}
+              style={[styles.expandableInput, { color: colors.text }]}
+              placeholder="Share what's on your mind..."
+              placeholderTextColor={colors.textTertiary}
+              value={thoughtInput}
+              onChangeText={setThoughtInput}
+              multiline
+              numberOfLines={3}
+            />
+            <Pressable
+              style={[styles.sendButton, { backgroundColor: colors.primary }]}
+              onPress={async () => {
+                if (thoughtInput.trim()) {
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  // TODO: Send to conversational AI endpoint
+                  console.log('Conversation input:', thoughtInput);
+                  setThoughtInput('');
+                }
+              }}
+            >
+              <IconSymbol name="paperplane.fill" size={20} color="#FFFFFF" />
+            </Pressable>
+          </Animated.View>
+
+          {/* Floating Icon - Only show when collapsed */}
+          {!isExpanded && (
+            <Animated.View 
+              style={[styles.floatingIcon, { opacity: contentOpacity }]}
+            >
+              <Pressable 
+                style={[styles.floatingButton, { backgroundColor: colors.primary }]}
+                onPress={toggleTextInput}
+              >
+                <IconSymbol name="text.bubble" size={28} color="#FFFFFF" />
+              </Pressable>
+            </Animated.View>
+          )}
+        </>
+      )}
 
       {/* Skip Button */}
       <Animated.View style={[styles.skipContainer, { opacity: contentOpacity }]}>
@@ -281,15 +377,25 @@ export default function WelcomeScreen() {
           </Text>
         </Pressable>
         
-        {/* Dev Tool: Token Access - COMMENTED OUT */}
-        {/* <Pressable 
-          onPress={() => router.push('/dev-token')}
-          style={{ marginTop: 10 }}
+        {/* Calm Breathing Session */}
+        <Pressable 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push({
+              pathname: '/calm-session',
+              params: {
+                protocol: 'meditation',
+                duration: '5',
+                fromWelcome: 'true'
+              }
+            });
+          }}
+          style={{ marginTop: 16 }}
         >
-          <Text style={[styles.skipText, { color: '#FF6B6B' }]}>
-            🔧 Dev: Get Token
+          <Text style={[styles.calmSessionText, { color: colors.primary }]}>
+            🧘 Start a calm breathing session
           </Text>
-        </Pressable> */}
+        </Pressable>
       </Animated.View>
     </View>
   );
@@ -374,9 +480,72 @@ const styles = StyleSheet.create({
   skipContainer: {
     position: 'absolute',
     bottom: CalmSpacing.xl,
+    alignItems: 'center',
   },
   skipText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  calmSessionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  expandableInputContainer: {
+    position: 'absolute',
+    bottom: CalmSpacing.xl,
+    width: width - CalmSpacing.xl * 2,
+    borderRadius: 20,
+    borderWidth: 2,
+    paddingHorizontal: CalmSpacing.lg,
+    paddingVertical: CalmSpacing.md,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  expandableHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: CalmSpacing.sm,
+  },
+  expandableTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  expandableInput: {
+    fontSize: 16,
+    fontWeight: '500',
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: CalmSpacing.sm,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+  },
+  floatingIcon: {
+    position: 'absolute',
+    bottom: CalmSpacing.xl,
+    right: CalmSpacing.xl,
+  },
+  floatingButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#4A9BAF',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
   },
 });

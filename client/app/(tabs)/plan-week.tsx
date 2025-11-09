@@ -62,15 +62,50 @@ export default function ScheduleScreen() {
   const [events, setEvents] = useState<Map<string, CalendarEvent[]>>(new Map());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lastSyncCheck, setLastSyncCheck] = useState(new Date());
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const monthDays = getMonthDays(year, month);
   const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
+  // Initial fetch
   useEffect(() => {
     fetchCalendarEvents();
   }, [currentDate]);
+
+  // Poll for updates every 10 seconds
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      await checkForUpdates();
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [lastSyncCheck]);
+
+  const checkForUpdates = async () => {
+    try {
+      // Get user email for user_id (you'll need to store this)
+      const userEmail = await SecureStore.getItemAsync('google_calendar_user_email');
+      if (!userEmail) return;
+
+      // Check if there are updates
+      const response = await fetch(
+        `${API_BASE_URL}/calendar-sync/check-updates?userId=${encodeURIComponent(userEmail)}&since=${lastSyncCheck.toISOString()}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.hasUpdates) {
+          console.log('🔄 Calendar updates detected, refreshing...');
+          await fetchCalendarEvents();
+          setLastSyncCheck(new Date());
+        }
+      }
+    } catch (error) {
+      console.log('ℹ️  Sync check failed (normal if offline)');
+    }
+  };
 
   const fetchCalendarEvents = async () => {
     setLoading(true);
