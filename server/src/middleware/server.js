@@ -262,21 +262,25 @@ app.post("/maistro", async (req, res) => {
   try {
     const { prompt, context, parameters } = req.body;
 
+    // mAIstro requires either 'ntl' (natural language) or 'agent' parameter
+    const requestBody = {
+      ntl: prompt, // Use prompt as natural language input
+      context: context || {},
+      parameters: parameters || {}
+    };
+
     const response = await fetch(NS_MAISTRO_ENDPOINT, {
       method: "POST",
       headers: {
         "embedcode": NS_EMBED_CODE,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        prompt,
-        context: context || {},
-        parameters: parameters || {}
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
-      throw new Error(`NeuralSeek mAIstro API error: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`NeuralSeek mAIstro API error: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
