@@ -21,6 +21,8 @@ import * as SecureStore from 'expo-secure-store';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuth0 } from '@/lib/use-auth0';
+import { apiClient } from '@/lib/api-client';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,9 +30,12 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
+  const { user } = useAuth0();
 
   const [userName, setUserName] = useState('');
-  const [showTextInput, setShowTextInput] = useState(true); // Show text input by default
+  const [isReturningUser, setIsReturningUser] = useState(false);
+  const [thoughtInput, setThoughtInput] = useState('');
+  const [showTextInput, setShowTextInput] = useState(true);
 
   // Animation values
   const circleScale = useRef(new Animated.Value(0)).current;
@@ -40,14 +45,20 @@ export default function WelcomeScreen() {
   const glowPulse = useRef(new Animated.Value(1)).current;
   const glowOpacity = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;  useEffect(() => {
-    loadUserName();
+    checkReturningUser();
     startAnimations();
   }, []);
 
-  const loadUserName = async () => {
-    const name = await SecureStore.getItemAsync('user_name');
-    if (name) {
-      setUserName(name);
+  const checkReturningUser = async () => {
+    const profileCompleted = await SecureStore.getItemAsync('profile_completed');
+    const savedName = await SecureStore.getItemAsync('user_name');
+    
+    if (profileCompleted === 'true' && savedName) {
+      setIsReturningUser(true);
+      setUserName(savedName);
+    } else if (user?.name) {
+      // Use Auth0 name as default
+      setUserName(user.name);
     }
   };
 
@@ -133,19 +144,45 @@ export default function WelcomeScreen() {
   });
 
   const handleContinue = async () => {
-    if (!userName.trim()) {
-      Alert.alert('Name Required', 'Please tell us your name to continue');
-      return;
+    if (isReturningUser) {
+      // Returning user - save thought/feeling and navigate
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      if (thoughtInput.trim()) {
+        // TODO: Save thought to database for AI analysis
+        console.log('User thought:', thoughtInput);
+      }
+      
+      // Navigate to main app
+      router.replace('/(tabs)');
+    } else {
+      // New user - validate name and save profile
+      if (!userName.trim()) {
+        Alert.alert('Name Required', 'Please tell us your name to continue');
+        return;
+      }
+
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Save profile completion flag and name
+      await SecureStore.setItemAsync('profile_completed', 'true');
+      await SecureStore.setItemAsync('user_name', userName);
+
+      // Sync name to Auth0 user metadata
+      try {
+        const accessToken = await SecureStore.getItemAsync('auth0_access_token');
+        if (accessToken) {
+          await apiClient.updateUserName(accessToken, userName);
+          console.log('✅ User name synced to Auth0');
+        }
+      } catch (error) {
+        console.error('Failed to sync name to Auth0:', error);
+        // Continue anyway - name is saved locally
+      }
+      
+      // Navigate to main app
+      router.replace('/(tabs)');
     }
-
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    // Save profile completion flag
-    await SecureStore.setItemAsync('profile_completed', 'true');
-    await SecureStore.setItemAsync('user_name', userName);
-
-    // Navigate to main app
-    router.replace('/(tabs)');
   };  return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Animated Psychic Circle */}
@@ -177,10 +214,14 @@ export default function WelcomeScreen() {
       {/* Welcome Text */}
       <Animated.View style={[styles.textContainer, { opacity: contentOpacity }]}>
         <Text style={[styles.welcomeText, { color: colors.text }]}>
-          Welcome{userName ? `, ${userName.split(' ')[0]}` : ''}!
+          {isReturningUser 
+            ? `Welcome back, ${userName.split(' ')[0]}!`
+            : `Welcome${userName ? `, ${userName.split(' ')[0]}` : ''}!`}
         </Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Let's create your neurodivergent-friendly profile
+          {isReturningUser
+            ? 'How are you feeling today?'
+            : "Let's create your neurodivergent-friendly profile"}
         </Text>
       </Animated.View>
 
@@ -197,13 +238,15 @@ export default function WelcomeScreen() {
       >
         <TextInput
           style={[styles.textInput, { color: colors.text }]}
-          placeholder="What's your name?"
+          placeholder={isReturningUser ? "Share what's on your mind..." : "What's your name?"}
           placeholderTextColor={colors.textTertiary}
-          value={userName}
-          onChangeText={setUserName}
+          value={isReturningUser ? thoughtInput : userName}
+          onChangeText={isReturningUser ? setThoughtInput : setUserName}
           autoFocus
           returnKeyType="done"
           onSubmitEditing={handleContinue}
+          multiline={isReturningUser}
+          numberOfLines={isReturningUser ? 3 : 1}
         />
         <Pressable
           style={[styles.continueButton, { backgroundColor: colors.primary }]}
@@ -217,7 +260,7 @@ export default function WelcomeScreen() {
       <Animated.View style={[styles.skipContainer, { opacity: contentOpacity }]}>
         <Pressable onPress={handleContinue}>
           <Text style={[styles.skipText, { color: colors.textSecondary }]}>
-            Skip for now →
+            {isReturningUser ? 'Continue to app →' : 'Skip for now →'}
           </Text>
         </Pressable>
       </Animated.View>

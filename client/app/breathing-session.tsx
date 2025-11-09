@@ -72,7 +72,7 @@ export default function BreathingSessionScreen() {
   const [isActive, setIsActive] = useState(false);
   const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
   const [countdown, setCountdown] = useState(phases[0].duration);
-  const [cyclesCompleted, setclesCompleted] = useState(0);
+  const [cyclesCompleted, setCyclesCompleted] = useState(0);
 
   const scale = useSharedValue(0.8);
   const colorProgress = useSharedValue(0);
@@ -142,7 +142,7 @@ export default function BreathingSessionScreen() {
       // Check if we completed a full cycle
       if (nextIndex === 0) {
         const newCycleCount = cyclesCompleted + 1;
-        setclesCompleted(newCycleCount);
+        setCyclesCompleted(newCycleCount);
         
         if (newCycleCount >= totalCycles) {
           // Session complete!

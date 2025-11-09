@@ -62,6 +62,80 @@ app.get("/profile/:userId", async (req, res) => {
 });
 
 // ============================================================================
+// Auth0 User Management
+// ============================================================================
+
+app.post("/update-user-name", async (req, res) => {
+  try {
+    const { name } = req.body;
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: "Missing or invalid authorization header" });
+    }
+
+    const accessToken = authHeader.split(' ')[1];
+    
+    // Get user info from Auth0 to get the user ID
+    const userInfoResponse = await fetch(`https://${process.env.AUTH0_DOMAIN}/userinfo`, {
+      headers: {
+        "Authorization": `Bearer ${accessToken}`
+      }
+    });
+
+    if (!userInfoResponse.ok) {
+      throw new Error(`Failed to get user info: ${userInfoResponse.statusText}`);
+    }
+
+    const userInfo = await userInfoResponse.json();
+    
+    // Get Management API token
+    const tokenResponse = await fetch(`https://${process.env.AUTH0_DOMAIN}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "client_credentials",
+        client_id: process.env.AUTH0_CLIENT_ID,
+        client_secret: process.env.AUTH0_CLIENT_SECRET,
+        audience: `https://${process.env.AUTH0_DOMAIN}/api/v2/`
+      })
+    });
+
+    if (!tokenResponse.ok) {
+      throw new Error(`Failed to get management token: ${tokenResponse.statusText}`);
+    }
+
+    const { access_token: managementToken } = await tokenResponse.json();
+
+    // Update user name using Management API
+    const updateResponse = await fetch(
+      `https://${process.env.AUTH0_DOMAIN}/api/v2/users/${encodeURIComponent(userInfo.sub)}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${managementToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name,
+          user_metadata: { display_name: name }
+        })
+      }
+    );
+
+    if (!updateResponse.ok) {
+      const errorData = await updateResponse.text();
+      throw new Error(`Failed to update user: ${errorData}`);
+    }
+
+    res.json({ success: true, name });
+  } catch (err) {
+    console.error("Update user name error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
 // Google Calendar Integration
 // ============================================================================
 
@@ -188,21 +262,25 @@ app.post("/maistro", async (req, res) => {
   try {
     const { prompt, context, parameters } = req.body;
 
+    // mAIstro requires either 'ntl' (natural language) or 'agent' parameter
+    const requestBody = {
+      ntl: prompt, // Use prompt as natural language input
+      context: context || {},
+      parameters: parameters || {}
+    };
+
     const response = await fetch(NS_MAISTRO_ENDPOINT, {
       method: "POST",
       headers: {
         "embedcode": NS_EMBED_CODE,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        prompt,
-        context: context || {},
-        parameters: parameters || {}
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
-      throw new Error(`NeuralSeek mAIstro API error: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`NeuralSeek mAIstro API error: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -411,6 +489,10 @@ app.post("/get-calendar-events", async (req, res) => {
   try {
     const { accessToken, timeMin, timeMax } = req.body;
     
+    if (!accessToken) {
+      return res.status(400).json({ error: "Access token is required" });
+    }
+
     const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
     url.searchParams.append("timeMin", timeMin);
     url.searchParams.append("timeMax", timeMax);
@@ -428,13 +510,23 @@ app.post("/get-calendar-events", async (req, res) => {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error("Google Calendar API error:", response.status, errorData);
+      
+      // Check if it's an auth error (401/403)
+      if (response.status === 401 || response.status === 403) {
+        return res.status(401).json({ 
+          error: "Invalid or expired Google Calendar access token. Please reconnect Google Calendar.",
+          details: errorData 
+        });
+      }
+      
       throw new Error(`Google Calendar API error: ${response.statusText} - ${JSON.stringify(errorData)}`);
     }
 
     const data = await response.json();
     res.json({ events: data.items || [] });
   } catch (err) {
-    console.error("Get calendar events error:", err);
+    console.error("Get calendar events error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

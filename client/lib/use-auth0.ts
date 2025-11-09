@@ -159,18 +159,14 @@ export const useAuth0 = () => {
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
 
-      const client = initAuth0();
-      await client.webAuth.clearSession();
-
-      // Clear stored tokens
+      // Clear stored tokens and data immediately
       await SecureStore.deleteItemAsync('auth0_access_token');
       await SecureStore.deleteItemAsync('auth0_refresh_token');
       await SecureStore.deleteItemAsync('auth0_id_token');
       await SecureStore.deleteItemAsync('auth0_user');
-      
-      // Clear profile data
       await SecureStore.deleteItemAsync('profile_completed');
       await SecureStore.deleteItemAsync('user_name');
+      await SecureStore.deleteItemAsync('google_calendar_connected');
 
       setAuthState({
         isAuthenticated: false,
@@ -179,17 +175,28 @@ export const useAuth0 = () => {
         error: null,
       });
 
+      // Try to clear Auth0 session (optional, don't block on failure)
+      try {
+        const client = initAuth0();
+        await client.webAuth.clearSession();
+      } catch (sessionError: any) {
+        // Ignore user cancellation or session clear errors
+        console.log('Session clear skipped or cancelled:', sessionError.error);
+      }
+
       return { success: true };
     } catch (error: any) {
       console.error('Logout error:', error);
-      const errorMessage = error.message || 'Failed to sign out. Please try again.';
-      setAuthState(prev => ({
-        ...prev,
+      
+      // Even if there's an error, clear local state
+      setAuthState({
+        isAuthenticated: false,
         isLoading: false,
-        error: errorMessage,
-      }));
+        user: null,
+        error: null,
+      });
 
-      return { success: false, error: errorMessage };
+      return { success: true }; // Always return success for logout
     }
   }, []);
 

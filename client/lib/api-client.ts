@@ -139,6 +139,24 @@ class ApiClient {
 
     return response.json();
   }
+
+  /**
+   * Update user name in Auth0 user metadata
+   */
+  async updateUserName(accessToken: string, name: string): Promise<void> {
+    const response = await fetch(`${this.baseURL}/update-user-name`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({ name }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update user name: ${response.statusText}`);
+    }
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
