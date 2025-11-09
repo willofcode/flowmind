@@ -1,12 +1,13 @@
 /**
  * Google Calendar connection component
- * Handles OAuth flow and connection status
+ * Handles OAuth flow via Auth0 and connection status
  */
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
-import { signInWithGoogle, signOutGoogle, isSignedIn } from '@/lib/google-auth';
+import { useAuth0 } from '@/lib/use-auth0';
 
 interface GoogleCalendarConnectProps {
   onConnectionChange: (connected: boolean, token?: string) => void;
@@ -15,15 +16,19 @@ interface GoogleCalendarConnectProps {
 export function GoogleCalendarConnect({ onConnectionChange }: GoogleCalendarConnectProps) {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { connectGoogleCalendar, isAuthenticated } = useAuth0();
 
   useEffect(() => {
     checkConnection();
   }, []);
 
   async function checkConnection() {
-    const signedIn = await isSignedIn();
-    setConnected(signedIn);
-    onConnectionChange(signedIn);
+    const calendarConnected = await SecureStore.getItemAsync('google_calendar_connected');
+    const accessToken = await SecureStore.getItemAsync('auth0_access_token');
+    const isConnected = calendarConnected === 'true' && !!accessToken;
+    
+    setConnected(isConnected);
+    onConnectionChange(isConnected, accessToken || undefined);
   }
 
   async function handleConnect() {
@@ -31,20 +36,24 @@ export function GoogleCalendarConnect({ onConnectionChange }: GoogleCalendarConn
     setLoading(true);
 
     try {
-      const token = await signInWithGoogle();
+      const result = await connectGoogleCalendar();
       
-      if (token) {
+      if (result.success) {
+        const token = await SecureStore.getItemAsync('auth0_access_token');
         setConnected(true);
-        onConnectionChange(true, token);
-        Alert.alert('Success', 'Google Calendar connected!');
+        onConnectionChange(true, token || undefined);
+        Alert.alert('Success', 'Google Calendar connected via Auth0!');
+      } else if (result.cancelled) {
+        // User cancelled, no error message needed
       } else {
-        Alert.alert('Error', 'Failed to connect Google Calendar. Check console for details.');
+        Alert.alert('Error', result.error || 'Failed to connect Google Calendar.');
       }
     } catch (error) {
       console.error('Connection error:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
+      checkConnection(); // Refresh state
     }
   }
 
@@ -60,13 +69,17 @@ export function GoogleCalendarConnect({ onConnectionChange }: GoogleCalendarConn
           text: 'Disconnect',
           style: 'destructive',
           onPress: async () => {
-            await signOutGoogle();
+            await SecureStore.deleteItemAsync('google_calendar_connected');
             setConnected(false);
             onConnectionChange(false);
           },
         },
       ]
     );
+  }
+
+  if (!isAuthenticated) {
+    return null; // Don't show if not authenticated
   }
 
   return (

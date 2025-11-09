@@ -220,11 +220,74 @@ export const useAuth0 = () => {
     }
   }, [logout]);
 
+  // Connect Google Calendar via Auth0
+  const connectGoogleCalendar = useCallback(async () => {
+    try {
+      setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
+
+      const client = initAuth0();
+      
+      // Request Google Calendar access through Auth0
+      const credentials = await client.webAuth.authorize({
+        scope: auth0Config.scope,
+        connection: 'google-oauth2', // Force Google OAuth connection
+      });
+
+      // Update tokens with new ones that include Google Calendar access
+      await SecureStore.setItemAsync('auth0_access_token', credentials.accessToken);
+      if (credentials.refreshToken) {
+        await SecureStore.setItemAsync('auth0_refresh_token', credentials.refreshToken);
+      }
+      if (credentials.idToken) {
+        await SecureStore.setItemAsync('auth0_id_token', credentials.idToken);
+      }
+
+      // Get updated user info
+      const userInfo = await client.auth.userInfo({ token: credentials.accessToken });
+      
+      const user: User = {
+        id: userInfo.sub,
+        email: userInfo.email || '',
+        name: userInfo.name || userInfo.email || 'User',
+        picture: userInfo.picture,
+        email_verified: userInfo.email_verified || false,
+      };
+
+      await SecureStore.setItemAsync('auth0_user', JSON.stringify(user));
+      await SecureStore.setItemAsync('google_calendar_connected', 'true');
+
+      setAuthState(prev => ({
+        ...prev,
+        isLoading: false,
+        user,
+      }));
+
+      return { success: true };
+    } catch (error: any) {
+      console.error('Google Calendar connection error:', error);
+      
+      if (error.error === 'a0.session.user_cancelled') {
+        setAuthState(prev => ({ ...prev, isLoading: false }));
+        return { success: false, cancelled: true };
+      }
+
+      const errorMessage = error.message || 'Failed to connect Google Calendar.';
+      setAuthState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+      }));
+
+      return { success: false, error: errorMessage };
+    }
+  }, []);
+
   return {
     ...authState,
     login,
     logout,
     refreshToken,
     checkAuthState,
+    connectGoogleCalendar,
   };
 };
