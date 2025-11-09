@@ -1,23 +1,43 @@
 /**
  * Profile Modal
- * User profile with Auth0 info and settings
+ * User profile with Google Sign-In info and settings
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useAuth0 } from '@/lib/use-auth0';
+import { getCurrentCalendarUser, signOutFromGoogleCalendar, isSignedInToGoogleCalendar } from '@/lib/google-calendar-auth';
 
 export default function ProfileModal() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
-  const { user, logout, isLoading } = useAuth0();
+  const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Load user data on mount
+  useEffect(() => {
+    loadUserData();
+  }, []);
+
+  const loadUserData = async () => {
+    try {
+      const isSignedIn = await isSignedInToGoogleCalendar();
+      if (isSignedIn) {
+        const userData = await getCurrentCalendarUser();
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -31,12 +51,11 @@ export default function ProfileModal() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            setLoggingOut(true);
-            const result = await logout();
-            
-            if (result.success) {
+            try {
+              setLoggingOut(true);
+              await signOutFromGoogleCalendar();
               router.replace('/landing');
-            } else {
+            } catch (error) {
               Alert.alert('Error', 'Failed to sign out');
               setLoggingOut(false);
             }
@@ -50,8 +69,8 @@ export default function ProfileModal() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     Alert.alert(
-      'Change Password',
-      'To change your password, please visit your Auth0 account settings or contact support.',
+      'Manage Account',
+      'To change your password or manage your account, please visit your Google Account settings at myaccount.google.com',
       [{ text: 'OK', style: 'cancel' }]
     );
   };

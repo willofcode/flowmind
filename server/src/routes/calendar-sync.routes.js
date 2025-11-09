@@ -57,7 +57,7 @@ router.post("/webhook", async (req, res) => {
     }
 
     if (resourceState === 'exists') {
-      // Calendar changed - trigger sync
+            // Calendar changed - trigger sync
       console.log('🔄 Calendar changed, triggering sync...');
 
       // Get watch channel info from database
@@ -72,13 +72,19 @@ router.post("/webhook", async (req, res) => {
         return;
       }
 
-      // Get user ID from channel metadata (you'll need to store this when creating watch)
-      // For now, we'll need to add user_id to calendar_watch_channels table
-      // const userId = watchChannel.user_id;
-      // const accessToken = await getUserAccessToken(userId);
-      
-      // Trigger background sync
-      // await calendarSyncService.backgroundSync(userId, accessToken);
+      // Store sync event in database so clients can poll for updates
+      if (watchChannel.user_id) {
+        await supabase
+          .from('calendar_sync_events')
+          .insert({
+            user_id: watchChannel.user_id,
+            event_type: 'calendar_changed',
+            channel_id: channelId,
+            triggered_at: new Date()
+          });
+        
+        console.log('✅ Sync event stored for user:', watchChannel.user_id);
+      }
       
       console.log('✅ Calendar sync triggered for channel:', channelId);
     }

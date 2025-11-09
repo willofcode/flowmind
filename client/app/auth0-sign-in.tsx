@@ -1,5 +1,5 @@
 /**
- * Auth0 Sign-In Screen
+ * Google Sign-In Screen
  * Simple, neurodivergent-friendly authentication
  */
 
@@ -17,13 +17,12 @@ import * as Haptics from 'expo-haptics';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useAuth0 } from '@/lib/use-auth0';
+import { signInWithGoogleCalendar } from '@/lib/google-calendar-auth';
 
 export default function Auth0SignInScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
-  const { login, isLoading } = useAuth0();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   const handleSignIn = async () => {
@@ -31,24 +30,27 @@ export default function Auth0SignInScreen() {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setIsAuthenticating(true);
 
-      const result = await login();
+      console.log('🔐 Starting Google Sign-In...');
+      const result = await signInWithGoogleCalendar();
 
       if (result.success) {
+        console.log('✅ Sign-in successful, navigating to welcome screen');
         // Navigate to welcome screen for profile setup
         router.replace('/welcome');
-      } else if (!result.cancelled) {
-        // Show error only if user didn't cancel
+      } else {
+        // Show error
+        console.log('❌ Sign-in failed:', result.error);
         Alert.alert(
           'Sign In Failed',
           result.error || 'Unable to sign in. Please try again.',
           [{ text: 'OK', style: 'cancel' }]
         );
       }
-    } catch (error) {
-      console.error('Sign in error:', error);
+    } catch (error: any) {
+      console.error('❌ Sign in error:', error);
       Alert.alert(
         'Error',
-        'An unexpected error occurred. Please try again.',
+        error.message || 'An unexpected error occurred. Please try again.',
         [{ text: 'OK', style: 'cancel' }]
       );
     } finally {
@@ -95,21 +97,21 @@ export default function Auth0SignInScreen() {
             },
           ]}
           onPress={handleSignIn}
-          disabled={isAuthenticating || isLoading}
+          disabled={isAuthenticating}
         >
-          {isAuthenticating || isLoading ? (
+          {isAuthenticating ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
             <>
               <IconSymbol name="lock.shield" size={24} color="#FFFFFF" />
-              <Text style={styles.buttonText}>Sign In with Auth0</Text>
+              <Text style={styles.buttonText}>Sign In with Google</Text>
             </>
           )}
         </Pressable>
 
         {/* Info Text */}
         <Text style={[styles.infoText, { color: colors.textTertiary }]}>
-          Secure authentication powered by Auth0
+          Secure authentication with Google
         </Text>
       </View>
     </View>

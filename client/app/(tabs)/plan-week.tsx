@@ -11,6 +11,7 @@ import * as SecureStore from 'expo-secure-store';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { getCalendarAccessToken } from '@/lib/google-calendar-auth';
 
 interface CalendarEvent {
   id: string;
@@ -84,17 +85,16 @@ export default function ScheduleScreen() {
         return;
       }
 
-      // Try Auth0 token first (new flow), fallback to google_access_token (old flow)
-      let token = await SecureStore.getItemAsync('auth0_access_token');
-      if (!token) {
-        token = await SecureStore.getItemAsync('google_access_token');
-      }
+      // Get fresh access token (handles refresh automatically)
+      const token = await getCalendarAccessToken();
       
       if (!token) {
-        console.log('No access token found - user needs to connect calendar');
+        console.log('❌ No access token found - user needs to sign in');
         setLoading(false);
         return;
       }
+
+      console.log('✅ Got fresh access token for calendar fetch');
 
       // Get month range
       const startDate = new Date(year, month, 1);
@@ -102,7 +102,7 @@ export default function ScheduleScreen() {
 
       console.log('📅 Fetching calendar events from:', API_BASE_URL);
       
-      const response = await fetch(`${API_BASE_URL}/get-calendar-events`, {
+      const response = await fetch(`${API_BASE_URL}/calendar/get-calendar-events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

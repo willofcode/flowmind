@@ -21,7 +21,7 @@ import * as SecureStore from 'expo-secure-store';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useAuth0 } from '@/lib/use-auth0';
+import { getCurrentCalendarUser, isSignedInToGoogleCalendar } from '@/lib/google-calendar-auth';
 import { apiClient } from '@/lib/api-client';
 
 const { width, height } = Dimensions.get('window');
@@ -30,8 +30,8 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
-  const { user } = useAuth0();
-
+  
+  const [user, setUser] = useState<any>(null);
   const [userName, setUserName] = useState('');
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [thoughtInput, setThoughtInput] = useState('');
@@ -47,10 +47,27 @@ export default function WelcomeScreen() {
   const glowAnim = useRef(new Animated.Value(0)).current;
   const glowPulse = useRef(new Animated.Value(1)).current;
   const glowOpacity = useRef(new Animated.Value(0)).current;
-  const contentOpacity = useRef(new Animated.Value(0)).current;  useEffect(() => {
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    loadUserData();
     checkReturningUser();
     startAnimations();
   }, []);
+
+  // Load Google user data
+  const loadUserData = async () => {
+    try {
+      const isSignedIn = await isSignedInToGoogleCalendar();
+      if (isSignedIn) {
+        const userData = await getCurrentCalendarUser();
+        setUser(userData);
+        console.log('👤 Loaded user data:', userData?.email);
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+  };
 
   // Delay focus to avoid iOS simulator warning
   useEffect(() => {
@@ -263,6 +280,16 @@ export default function WelcomeScreen() {
             {isReturningUser ? 'Continue to app →' : 'Skip for now →'}
           </Text>
         </Pressable>
+        
+        {/* Dev Tool: Token Access - COMMENTED OUT */}
+        {/* <Pressable 
+          onPress={() => router.push('/dev-token')}
+          style={{ marginTop: 10 }}
+        >
+          <Text style={[styles.skipText, { color: '#FF6B6B' }]}>
+            🔧 Dev: Get Token
+          </Text>
+        </Pressable> */}
       </Animated.View>
     </View>
   );

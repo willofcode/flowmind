@@ -370,4 +370,74 @@ router.post("/manual-activity", async (req, res) => {
   }
 });
 
+/**
+ * POST /calendar/get-calendar-events
+ * 
+ * Fetch calendar events for a given time range
+ * Used by the mobile app to display calendar events
+ * 
+ * Request Body:
+ *   - accessToken: string (required) - Google Calendar OAuth token
+ *   - timeMin: string (required) - ISO date string
+ *   - timeMax: string (required) - ISO date string
+ * 
+ * Response:
+ *   - events: array of calendar events
+ */
+router.post("/get-calendar-events", async (req, res) => {
+  try {
+    const { accessToken, timeMin, timeMax } = req.body;
+    
+    if (!accessToken) {
+      return res.status(400).json({ 
+        error: "Missing required field: accessToken" 
+      });
+    }
+    
+    if (!timeMin || !timeMax) {
+      return res.status(400).json({ 
+        error: "Missing required fields: timeMin and timeMax" 
+      });
+    }
+    
+    console.log(`📅 Fetching calendar events from ${timeMin} to ${timeMax}`);
+    
+    // Fetch events from Google Calendar API
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+      `timeMin=${encodeURIComponent(timeMin)}&` +
+      `timeMax=${encodeURIComponent(timeMax)}&` +
+      `singleEvents=true&` +
+      `orderBy=startTime`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`Google Calendar API error: ${JSON.stringify(error)}`);
+    }
+    
+    const data = await response.json();
+    
+    console.log(`✅ Found ${data.items?.length || 0} calendar events`);
+    
+    res.json({
+      success: true,
+      events: data.items || []
+    });
+    
+  } catch (err) {
+    console.error("❌ Fetch calendar events error:", err);
+    res.status(500).json({ 
+      error: err.message,
+      details: "Failed to fetch calendar events"
+    });
+  }
+});
+
 export default router;

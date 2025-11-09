@@ -206,7 +206,7 @@ export default function CalendarSyncStatus({
       </View>
 
       {/* Changes Summary */}
-      {changes && (changes.added > 0 || changes.modified > 0 || changes.deleted > 0) && (
+      {changes && (changes.added.length > 0 || changes.modified.length > 0 || changes.deleted.length > 0) && (
         <View style={{
           backgroundColor: colors.background,
           borderRadius: 8,
@@ -221,19 +221,19 @@ export default function CalendarSyncStatus({
             Recent changes:
           </Text>
           <View style={{ flexDirection: 'row', gap: 12 }}>
-            {changes.added > 0 && (
+            {changes.added.length > 0 && (
               <Text style={{ fontSize: 12, color: '#34C759' }}>
-                +{changes.added} added
+                +{changes.added.length} added
               </Text>
             )}
-            {changes.modified > 0 && (
+            {changes.modified.length > 0 && (
               <Text style={{ fontSize: 12, color: '#FF9500' }}>
-                ~{changes.modified} modified
+                ~{changes.modified.length} modified
               </Text>
             )}
-            {changes.deleted > 0 && (
+            {changes.deleted.length > 0 && (
               <Text style={{ fontSize: 12, color: '#FF3B30' }}>
-                -{changes.deleted} deleted
+                -{changes.deleted.length} deleted
               </Text>
             )}
           </View>
