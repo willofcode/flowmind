@@ -77,35 +77,52 @@ All neurodivergent features flow from `client/types/neuro-profile.ts`:
 
 ### Running the App
 ```bash
-# Terminal 1 - Backend
-cd server && npm start  # Runs on :3001
+# Terminal 1 - Backend (MODULAR ARCHITECTURE)
+cd server && npm start  # Runs index.js on :3001
 
 # Terminal 2 - iOS client
 cd client && npm run ios  # Expo/React Native
+
+# Terminal 3 - Test API (optional)
+cd server && node test-new-api.js  # Comprehensive test suite
 ```
+
+**Server Architecture:** The backend now uses a modular structure. See `server/ARCHITECTURE.md` for complete documentation.
 
 ### Environment Setup
 - **Server**: Requires `server/.env` with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `NS_EMBED_CODE`
 - **Client**: Requires `client/.env` with `EXPO_PUBLIC_API_BASE_URL=http://localhost:3001`
-- **Database**: Run `supabase-schema.sql` in Supabase SQL Editor (creates `profiles` + `weekly_plans` tables)
+- **Database**: Run `server/user-schema.sql` in Supabase SQL Editor
 
 ### Key Commands
-- `npm run ios` - Start Expo on iOS simulator
+- `npm run ios` - Start Expo on iOS simulator (client folder)
 - `npm start` - Start Node backend (server folder only)
 - `expo install <pkg>` - Add Expo-compatible packages (not `npm install`)
 
 ## API Integration Patterns
 
-### NeuralSeek (AI Planning)
+### NeuralSeek (AI Planning & Mood Analysis)
 - **Embed code auth**: Use `embedcode` header, NOT Bearer tokens
 - **Two endpoints**: `/seek` (knowledge base queries) | `/maistro` (AI agent planning)
-- **Prompt structure**: See `buildNeuroAgentPrompt()` in `server/server.js` for neurodivergent-aware constraints
-- **Response parsing**: `parseNeuralSeekResponse()` extracts `timePlan`, `workoutPlan`, `dinnerPlan`, `groceryList`
+- **Critical parameter**: mAIstro requires `ntl` (natural language), NOT `prompt`
+- **Mood analysis**: `analyzeMoodWithMaistro()` in `server/server-new-schema.js`
+  - Input: User transcription, schedule density, neuro context
+  - Output: Mood score (1-10), energy level, stress level, recommendations
+- **Pattern discovery**: `discoverMoodPatterns()` finds correlations asynchronously
+  - Analyzes last 30 mood check-ins + 4 weeks of schedules
+  - Returns patterns with confidence scores
+- **Response parsing**: Expects JSON format with structured mood data
 
 ### Supabase (Backend Storage)
-- **Profile storage**: `profiles` table stores `profile_data` as JSONB
-- **Weekly plans**: `weekly_plans` table with `user_id` FK + `plan_data` JSONB
-- **Client integration**: Use `@supabase/supabase-js` directly in client (already configured in `lib/api-client.ts`)
+- **User storage**: `users` table with email as primary identifier (Auth0 link optional)
+- **Profile storage**: `user_profiles` table with JSONB for neuro preferences & personality
+- **Mood tracking**: `mood_check_ins` table stores STT transcriptions + AI analysis
+- **Schedule context**: `weekly_schedules` table with density metrics
+- **Pattern discovery**: `mood_patterns` table stores AI-found correlations
+- **Conversation history**: `conversations` table for mAIstro context
+- **Client integration**: Use `@supabase/supabase-js` directly in client
+- **Views**: `user_current_state` view provides complete user context in one query
+- **RLS**: Disabled for development, requires policies for production
 
 ### Google Calendar (Required for Scheduling)
 - **OAuth implementation status**: ⚠️ **NOT YET IMPLEMENTED** - Need to add OAuth flow
@@ -155,19 +172,72 @@ const handlePress = async () => {
 <Pressable style={{ height: 56, borderRadius: 12 }}>
 ```
 
+### STT Mood Check-in Component
+```tsx
+import MoodCheckInSTT from '@/components/mood-checkin-stt';
+
+// Voice-based mood tracking with AI analysis
+<MoodCheckInSTT
+  userId="user-uuid"
+  onComplete={(data) => {
+    console.log('Transcription:', data.transcription);
+    console.log('Mood score:', data.moodScore);
+    console.log('Recommendations:', data.recommendations);
+  }}
+  onCancel={() => router.back()}
+/>
+```
+
+**Key Features:**
+- Audio recording with `expo-av`
+- Pulsing animations (respects `reducedAnimation`)
+- Real-time timer display
+- Haptic feedback on record/stop
+- Mock transcription (replace with OpenAI Whisper/iOS Speech Recognition)
+- Sends to backend → mAIstro analysis → returns mood + recommendations
+
 ### Server Endpoints
 ```javascript
 // Always catch errors and log
 try {
   const response = await fetch(NS_MAISTRO_ENDPOINT, {
     headers: { "embedcode": NS_EMBED_CODE },
-    body: JSON.stringify({ prompt, context })
+    body: JSON.stringify({ ntl: prompt, context, parameters }) // Use ntl, not prompt!
   });
   if (!response.ok) throw new Error(`API error: ${response.statusText}`);
 } catch (err) {
   console.error("Endpoint error:", err);
   res.status(500).json({ error: err.message });
 }
+
+// Example: Mood check-in endpoint
+app.post("/mood-checkin", async (req, res) => {
+  const { userId, transcription, audioUrl, durationSeconds } = req.body;
+  
+  // 1. Get schedule context
+  const { data: schedule } = await supabase
+    .from("weekly_schedules")
+    .select("avg_daily_density")
+    .eq("user_id", userId)
+    .single();
+  
+  // 2. Call mAIstro for mood analysis
+  const analysis = await analyzeMoodWithMaistro({
+    transcription,
+    userId,
+    scheduleDensity: schedule?.avg_daily_density > 0.7 ? 'high' : 'medium'
+  });
+  
+  // 3. Save to database
+  const { data } = await supabase
+    .from("mood_check_ins")
+    .insert({ user_id: userId, transcription, mood_score: analysis.moodScore, ... });
+  
+  // 4. Trigger async pattern discovery
+  discoverMoodPatterns(userId);
+  
+  res.json({ success: true, checkIn: data, recommendations: analysis.recommendations });
+});
 ```
 
 ### Profile Management
@@ -234,29 +304,57 @@ const testCases = [
 | `client/lib/api-client.ts` | Backend API wrapper | New server endpoints |
 | `client/lib/profile-store.ts` | Local storage + defaults | Profile schema changes |
 | `client/components/today-view.tsx` | Main UX component | Today screen changes |
+| `client/components/mood-checkin-stt.tsx` | Voice mood check-in | STT recording logic |
 | `client/constants/calm-theme.ts` | Design tokens | Colors, spacing, typography |
-| `server/server.js` | All backend logic | API endpoints, NeuralSeek integration |
+| `server/server.js` | Legacy backend (deprecated) | DO NOT USE - Use server-new-schema.js |
+| `server/server-new-schema.js` | **Current backend** | All API endpoints, mAIstro orchestration |
+| `server/user-schema.sql` | **Current database schema** | User-centric tables, views, functions |
 | `DESIGN_PATTERNS.md` | UX rules & rationale | Understanding neurodivergent design |
-| `supabase-schema.sql` | Database schema | Adding tables, indexes, migrations |
+| `STT_INTEGRATION_GUIDE.md` | Voice transcription guide | Implementing STT services |
+| `IMPLEMENTATION_COMPLETE.md` | Complete architecture docs | Understanding new system |
 
 ## Database Schema & Migrations
 
-### Current Tables
+### Current Tables (User-Centric Architecture)
 ```sql
--- User profiles (JSONB for flexibility)
-profiles (user_id, profile_data, updated_at)
+-- Core user management
+users (id, email, name, auth0_sub [optional], created_at, updated_at)
 
--- Weekly AI-generated plans
-weekly_plans (id, user_id, week_start, week_end, plan_data, created_at)
+-- Neurodivergent preferences & personality
+user_profiles (user_id, display_name, neuro_preferences JSONB, personality_traits JSONB)
 
--- Breathing/meditation sessions (planned)
-breathing_sessions (id, user_id, duration_min, script_text, audio_url, created_at)
+-- STT mood check-ins with AI analysis
+mood_check_ins (id, user_id, check_in_date, transcription, mood_score, energy_level, 
+                stress_level, emotional_state JSONB, schedule_density, ai_analysis JSONB)
 
--- Schedule intensity cache (planned)
-schedule_intensity (id, user_id, date, intensity_level, busy_minutes, total_minutes, calculated_at)
+-- Weekly schedule context
+weekly_schedules (id, user_id, week_start, week_end, total_events, total_minutes, 
+                  avg_daily_density, daily_breakdown JSONB)
 
--- Activity completions for tracking (planned)
-activity_completions (id, user_id, block_id, completed_at, skipped, micro_steps_completed)
+-- AI-discovered mood-schedule correlations
+mood_patterns (id, user_id, pattern_type, pattern_name, description, 
+               trigger_conditions JSONB, observed_effect JSONB, recommendations JSONB,
+               confidence_score, occurrence_count, active, last_observed_at)
+
+-- Conversation history for mAIstro context
+conversations (id, user_id, role, message, context JSONB, mood_score, intent, created_at)
+
+-- AI orchestration decision tracking
+ai_orchestration_sessions (id, user_id, session_type, mood_score, schedule_density,
+                            ai_decisions JSONB, recommendations JSONB, user_selected_action)
+
+-- User feedback for continuous improvement
+user_feedback (id, user_id, feedback_type, target_id, rating, comment, context JSONB)
+```
+
+### Views
+```sql
+-- Complete user state in one query
+user_current_state (id, email, name, display_name, neuro_preferences, 
+                     personality_traits, last_mood_check_in, last_active)
+
+-- 30-day mood trends with aggregations
+mood_trends (user_id, date, avg_mood_score, avg_energy_level, check_in_count)
 ```
 
 ### Schema Organization Principles
@@ -288,12 +386,14 @@ CREATE INDEX idx_table_name_created_at ON table_name(created_at);
 2. **Profile impact**: Does it need new fields in `PersonalNeuroProfile`?
 3. **Sensory awareness**: Does it animate, make sound, or flash? Add toggle.
 4. **Micro-steps**: If it's an activity, break it into 3-5 concrete actions
-5. **API needs**: Backend endpoint? Add to `server/server.js` + `client/lib/api-client.ts`
+5. **API needs**: Backend endpoint? Add route to `server/src/routes/` + update `client/lib/api-client.ts`
 6. **TypeScript types**: Update `client/types/neuro-profile.ts` first
+7. **Documentation**: Add JSDoc comments and update `server/ARCHITECTURE.md`
 
 ## External Resources
 
+- **Server Architecture**: See `server/ARCHITECTURE.md` for modular structure
 - **NeuralSeek API**: See `NEURALSEEK_INTEGRATION.md` for embed code auth pattern
-- **Supabase**: Run `supabase-schema.sql` for table schemas
+- **Supabase**: Run `server/user-schema.sql` for table schemas
 - **Expo docs**: https://docs.expo.dev (for notifications, haptics, secure-store)
 - **WCAG AAA**: https://www.w3.org/WAI/WCAG21/quickref/ (accessibility reference)
