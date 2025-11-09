@@ -16,7 +16,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import * as SecureStore from 'expo-secure-store';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -68,37 +67,14 @@ export default function LandingScreen() {
     ]).start();
   }, []);
 
-  // Check auth state on mount
-  useEffect(() => {
-    checkAuthState();
-  }, []);
-
-  const checkAuthState = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('google_access_token');
-      const profileCompleted = await SecureStore.getItemAsync('profile_completed');
-      
-      if (token && profileCompleted === 'true') {
-        // User is authenticated and profile is complete
-        router.replace('/(tabs)');
-      } else if (token) {
-        // User is authenticated but profile incomplete
-        router.replace('/welcome');
-      }
-      // Otherwise stay on landing page
-    } catch (err) {
-      console.error('Auth check error:', err);
-    }
-  };
-
   const handleSignIn = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/sign-in');
+    router.push('/auth0-sign-in');
   };
 
   const handleSignUp = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/sign-in'); // Same flow for now
+    router.push('/auth0-sign-in'); // Auth0 handles both sign in and sign up
   };
 
   const handleLearnMore = async () => {

@@ -1,7 +1,7 @@
 /**
- * Welcome Screen - Animated Profile Creation
- * Shows after successful sign-in with psychic circle animation
- * Voice-enabled profile setup
+ * Welcome Screen - Profile Creation
+ * Shows after successful sign-in with animated entrance
+ * Optional voice input available
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -18,7 +18,6 @@ import {
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
-import { Audio } from 'expo-av';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -31,39 +30,24 @@ export default function WelcomeScreen() {
   const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
 
   const [userName, setUserName] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
-  const [showTextInput, setShowTextInput] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [showTextInput, setShowTextInput] = useState(true); // Show text input by default
 
   // Animation values
   const circleScale = useRef(new Animated.Value(0)).current;
   const circleOpacity = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
-  const contentOpacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
+  const glowPulse = useRef(new Animated.Value(1)).current;
+  const glowOpacity = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(0)).current;  useEffect(() => {
     loadUserName();
     startAnimations();
-    requestAudioPermissions();
   }, []);
 
   const loadUserName = async () => {
     const name = await SecureStore.getItemAsync('user_name');
     if (name) {
       setUserName(name);
-    }
-  };
-
-  const requestAudioPermissions = async () => {
-    try {
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-    } catch (err) {
-      console.log('Audio permission error:', err);
     }
   };
 
@@ -81,6 +65,11 @@ export default function WelcomeScreen() {
         duration: 800,
         useNativeDriver: true,
       }),
+      Animated.timing(glowOpacity, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: false, // JS driver for glow
+      }),
     ]).start();
 
     // Content fade in
@@ -91,7 +80,7 @@ export default function WelcomeScreen() {
       useNativeDriver: true,
     }).start();
 
-    // Continuous pulse animation
+    // Continuous pulse animation (native driver for main circle)
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -107,19 +96,33 @@ export default function WelcomeScreen() {
       ])
     ).start();
 
-    // Glow animation
+    // Glow animation (JS driver for both color and scale)
     Animated.loop(
       Animated.sequence([
-        Animated.timing(glowAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: false,
-        }),
+        Animated.parallel([
+          Animated.timing(glowAnim, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: false,
+          }),
+          Animated.timing(glowPulse, {
+            toValue: 1.08,
+            duration: 2000,
+            useNativeDriver: false,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(glowAnim, {
+            toValue: 0,
+            duration: 2000,
+            useNativeDriver: false,
+          }),
+          Animated.timing(glowPulse, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: false,
+          }),
+        ]),
       ])
     ).start();
   };
@@ -128,44 +131,6 @@ export default function WelcomeScreen() {
     inputRange: [0, 1],
     outputRange: ['rgba(74, 155, 175, 0.2)', 'rgba(122, 207, 125, 0.4)'],
   });
-
-  const startRecording = async () => {
-    try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      setIsRecording(true);
-      console.log('🎤 Recording started');
-    } catch (err) {
-      console.error('Failed to start recording', err);
-      Alert.alert('Recording Error', 'Please enable microphone access');
-    }
-  };
-
-  const stopRecording = async () => {
-    if (!recording) return;
-
-    try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setIsRecording(false);
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      console.log('🎤 Recording stopped:', uri);
-      
-      // TODO: Send to speech-to-text API
-      Alert.alert(
-        'Voice Recorded',
-        'Voice profile creation coming soon! Please use text input for now.',
-        [{ text: 'OK', onPress: () => setShowTextInput(true) }]
-      );
-      
-      setRecording(null);
-    } catch (err) {
-      console.error('Failed to stop recording', err);
-    }
-  };
 
   const handleContinue = async () => {
     if (!userName.trim()) {
@@ -181,14 +146,7 @@ export default function WelcomeScreen() {
 
     // Navigate to main app
     router.replace('/(tabs)');
-  };
-
-  const toggleTextInput = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setShowTextInput(!showTextInput);
-  };
-
-  return (
+  };  return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Animated Psychic Circle */}
       <View style={styles.circleContainer}>
@@ -197,8 +155,8 @@ export default function WelcomeScreen() {
             styles.glowCircle,
             {
               backgroundColor: glowColor,
-              transform: [{ scale: pulseAnim }],
-              opacity: circleOpacity,
+              transform: [{ scale: glowPulse }], // JS-driven scale
+              opacity: glowOpacity, // JS-driven opacity
             },
           ]}
         />
@@ -207,8 +165,8 @@ export default function WelcomeScreen() {
             styles.mainCircle,
             {
               backgroundColor: colors.primary,
-              transform: [{ scale: circleScale }],
-              opacity: circleOpacity,
+              transform: [{ scale: Animated.multiply(circleScale, pulseAnim) }], // Native-driven scale
+              opacity: circleOpacity, // Native-driven opacity
             },
           ]}
         >
@@ -226,82 +184,32 @@ export default function WelcomeScreen() {
         </Text>
       </Animated.View>
 
-      {/* Voice Recording Button */}
-      {!showTextInput && (
-        <Animated.View style={[styles.voiceSection, { opacity: contentOpacity }]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.voiceButton,
-              {
-                backgroundColor: isRecording ? colors.error : colors.primary,
-                opacity: pressed ? 0.85 : 1,
-                transform: [{ scale: pressed ? 0.95 : 1 }],
-              },
-            ]}
-            onPressIn={startRecording}
-            onPressOut={stopRecording}
-          >
-            <IconSymbol 
-              name={isRecording ? "mic.fill" : "mic"} 
-              size={48} 
-              color="#FFFFFF" 
-            />
-          </Pressable>
-          <Text style={[styles.instructionText, { color: colors.textSecondary }]}>
-            {isRecording ? 'Release to stop' : 'Hold to speak'}
-          </Text>
-        </Animated.View>
-      )}
-
-      {/* Text Input (Floating) */}
-      {showTextInput && (
-        <Animated.View 
-          style={[
-            styles.textInputContainer, 
-            { 
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              opacity: contentOpacity,
-            }
-          ]}
-        >
-          <TextInput
-            style={[styles.textInput, { color: colors.text }]}
-            placeholder="What's your name?"
-            placeholderTextColor={colors.textTertiary}
-            value={userName}
-            onChangeText={setUserName}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={handleContinue}
-          />
-          <Pressable
-            style={[styles.continueButton, { backgroundColor: colors.primary }]}
-            onPress={handleContinue}
-          >
-            <IconSymbol name="arrow.right" size={24} color="#FFFFFF" />
-          </Pressable>
-        </Animated.View>
-      )}
-
-      {/* Text Input Toggle Button (Floating Bottom Right) */}
-      <Animated.View style={[styles.floatingButton, { opacity: contentOpacity }]}>
+      {/* Text Input */}
+      <Animated.View 
+        style={[
+          styles.textInputContainer, 
+          { 
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            opacity: contentOpacity,
+          }
+        ]}
+      >
+        <TextInput
+          style={[styles.textInput, { color: colors.text }]}
+          placeholder="What's your name?"
+          placeholderTextColor={colors.textTertiary}
+          value={userName}
+          onChangeText={setUserName}
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={handleContinue}
+        />
         <Pressable
-          style={({ pressed }) => [
-            styles.toggleButton,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-          onPress={toggleTextInput}
+          style={[styles.continueButton, { backgroundColor: colors.primary }]}
+          onPress={handleContinue}
         >
-          <IconSymbol 
-            name={showTextInput ? "mic" : "keyboard"} 
-            size={24} 
-            color={colors.text} 
-          />
+          <IconSymbol name="arrow.right" size={24} color="#FFFFFF" />
         </Pressable>
       </Animated.View>
 
@@ -365,26 +273,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 26,
   },
-  voiceSection: {
-    alignItems: 'center',
-    gap: CalmSpacing.lg,
-  },
-  voiceButton: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#4A9BAF',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  instructionText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
   textInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -412,24 +300,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  floatingButton: {
-    position: 'absolute',
-    bottom: CalmSpacing.xl + 60,
-    right: CalmSpacing.xl,
-  },
-  toggleButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
   },
   skipContainer: {
     position: 'absolute',

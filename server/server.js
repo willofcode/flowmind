@@ -406,6 +406,39 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Get calendar events (list view, not just freebusy)
+app.post("/get-calendar-events", async (req, res) => {
+  try {
+    const { accessToken, timeMin, timeMax } = req.body;
+    
+    const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
+    url.searchParams.append("timeMin", timeMin);
+    url.searchParams.append("timeMax", timeMax);
+    url.searchParams.append("singleEvents", "true");
+    url.searchParams.append("orderBy", "startTime");
+    url.searchParams.append("maxResults", "100");
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Accept": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Google Calendar API error: ${response.statusText} - ${JSON.stringify(errorData)}`);
+    }
+
+    const data = await response.json();
+    res.json({ events: data.items || [] });
+  } catch (err) {
+    console.error("Get calendar events error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================================
 // Start Server
 // ============================================================================

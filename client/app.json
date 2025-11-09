@@ -47,7 +47,9 @@
           "iosUrlScheme": "com.googleusercontent.apps.940109485523-podr192et86foo0jl92nh1dn4pnveinf"
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-audio",
+      "react-native-auth0"
     ],
     "experiments": {
       "typedRoutes": true,
