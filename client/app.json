@@ -21,7 +21,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.willofcode.flowmind"
     },
     "web": {
       "output": "static",
@@ -41,15 +48,14 @@
           }
         }
       ],
-      [
-        "@react-native-google-signin/google-signin",
-        {
-          "iosUrlScheme": "com.googleusercontent.apps.940109485523-podr192et86foo0jl92nh1dn4pnveinf"
-        }
-      ],
       "expo-web-browser",
       "expo-audio",
-      "react-native-auth0"
+      [
+        "react-native-auth0",
+        {
+          "domain": "dev-3ye3j4yrks1dqfm7.us.auth0.com"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

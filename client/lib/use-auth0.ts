@@ -89,6 +89,14 @@ export const useAuth0 = () => {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
 
       const client = initAuth0();
+      
+      // // Debug: Log the redirect URI being used
+      // console.log('🔐 Auth0 Login Config:');
+      // console.log('Domain:', auth0Config.domain);
+      // console.log('Client ID:', auth0Config.clientId);
+      // console.log('Redirect URI:', auth0Config.redirectUri);
+      // console.log('Logout URI:', auth0Config.logoutUri);
+      
       const credentials = await client.webAuth.authorize({
         scope: auth0Config.scope,
       });
@@ -125,7 +133,9 @@ export const useAuth0 = () => {
 
       return { success: true, user };
     } catch (error: any) {
-      console.error('Login error:', error);
+      console.error('Error code:', error.error);
+      console.error('Error message:', error.message);
+      console.error('Full error:', JSON.stringify(error, null, 2));
       
       // User cancelled the login
       if (error.error === 'a0.session.user_cancelled') {
