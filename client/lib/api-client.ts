@@ -195,6 +195,276 @@ class ApiClient {
 
     return response.json();
   }
+  
+  // ============================================================================
+  // Calendar Optimization API
+  // ============================================================================
+  
+  /**
+   * Run agentic calendar optimization workflow
+   * Analyzes schedule, mood, and generates optimized activities
+   */
+  async optimizeCalendar(
+    userId: string,
+    accessToken: string,
+    targetDate?: Date
+  ): Promise<{
+    success: boolean;
+    optimizationId: string;
+    summary: {
+      assessment: string;
+      scheduleIntensity: {
+        level: 'low' | 'medium' | 'high';
+        ratio: number;
+        busyMinutes: number;
+        totalMinutes: number;
+      };
+      moodScore: number;
+      energyLevel: string;
+      totalGaps: number;
+      actionsPlanned: number;
+      eventsCreated: number;
+      errors: number;
+    };
+    createdEvents: any[];
+    recommendations: string[];
+    errors?: any[];
+  }> {
+    const response = await fetch(`${this.baseURL}/calendar/optimize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        userId, 
+        accessToken, 
+        targetDate: targetDate?.toISOString() 
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Calendar optimization failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+  
+  /**
+   * Analyze schedule without making changes
+   * Preview what optimization would do
+   */
+  async analyzeSchedule(
+    userId: string,
+    accessToken: string,
+    targetDate?: Date
+  ): Promise<{
+    date: string;
+    scheduleIntensity: {
+      level: 'low' | 'medium' | 'high';
+      ratio: number;
+      busyMinutes: number;
+      totalMinutes: number;
+    };
+    gaps: Array<{
+      start: string;
+      end: string;
+      minutes: number;
+      startTime: string;
+      endTime: string;
+      inEnergyWindow: boolean;
+    }>;
+    recommendations: string[];
+    summary: {
+      totalBusyBlocks: number;
+      totalGaps: number;
+      totalAvailableMinutes: number;
+      energyPeakGaps: number;
+    };
+  }> {
+    const response = await fetch(`${this.baseURL}/calendar/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        userId, 
+        accessToken, 
+        targetDate: targetDate?.toISOString() 
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Schedule analysis failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+  
+  /**
+   * Get optimization history
+   */
+  async getOptimizationHistory(
+    userId: string,
+    limit: number = 10
+  ): Promise<{
+    history: any[];
+    count: number;
+  }> {
+    const response = await fetch(
+      `${this.baseURL}/calendar/optimization-history?userId=${userId}&limit=${limit}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to get optimization history: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+  
+  /**
+   * Manually create a specific activity in calendar
+   */
+  async createManualActivity(
+    accessToken: string,
+    activityType: 'breathing' | 'movement' | 'meal' | 'workout',
+    startISO: string,
+    duration?: number
+  ): Promise<{
+    success: boolean;
+    event: any;
+  }> {
+    const response = await fetch(`${this.baseURL}/calendar/manual-activity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        accessToken, 
+        activityType, 
+        startISO, 
+        duration 
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create manual activity: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+  
+  // ============================================================================
+  // Calendar Sync API
+  // ============================================================================
+  
+  /**
+   * Manually trigger calendar sync
+   * Detects changes from external sources (user edits, other apps)
+   */
+  async syncCalendar(
+    userId: string,
+    accessToken: string
+  ): Promise<{
+    success: boolean;
+    changes: {
+      added: Array<{ id: string; summary: string }>;
+      modified: Array<{ id: string; summary: string }>;
+      deleted: Array<{ id: string }>;
+    };
+    syncToken: string;
+    hasMore: boolean;
+    recommendReoptimization: boolean;
+  }> {
+    const response = await fetch(`${this.baseURL}/calendar-sync/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, accessToken }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Calendar sync failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+  
+  /**
+   * Set up Google Calendar push notifications
+   */
+  async watchCalendar(
+    userId: string,
+    accessToken: string,
+    webhookUrl: string
+  ): Promise<{
+    success: boolean;
+    channelId: string;
+    resourceId: string;
+    expiration: number;
+  }> {
+    const response = await fetch(`${this.baseURL}/calendar-sync/watch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, accessToken, webhookUrl }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Watch calendar failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+  
+  /**
+   * Stop watching calendar
+   */
+  async unwatchCalendar(
+    accessToken: string,
+    channelId: string,
+    resourceId: string
+  ): Promise<{ success: boolean }> {
+    const response = await fetch(`${this.baseURL}/calendar-sync/unwatch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken, channelId, resourceId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Unwatch calendar failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+  
+  /**
+   * Get recent calendar changes
+   */
+  async getCalendarChanges(userId: string): Promise<{
+    changes: any[];
+    count: number;
+  }> {
+    const response = await fetch(
+      `${this.baseURL}/calendar-sync/changes?userId=${userId}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Get changes failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+  
+  /**
+   * Check if re-optimization is recommended
+   */
+  async checkReoptimization(userId: string): Promise<{
+    shouldReoptimize: boolean;
+    reason: string;
+  }> {
+    const response = await fetch(
+      `${this.baseURL}/calendar-sync/should-reoptimize?userId=${userId}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Check re-optimize failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);

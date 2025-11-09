@@ -15,6 +15,8 @@ import conversationsRoutes from "./src/routes/conversations.routes.js";
 import orchestrationRoutes from "./src/routes/orchestration.routes.js";
 import feedbackRoutes from "./src/routes/feedback.routes.js";
 import healthRoutes from "./src/routes/health.routes.js";
+import calendarRoutes from "./src/routes/calendar.routes.js";
+import calendarSyncRoutes from "./src/routes/calendar-sync.routes.js";
 
 // Load environment variables
 dotenv.config();
@@ -69,6 +71,18 @@ app.use("/feedback", feedbackRoutes);
  * Monitors API and service health
  */
 app.use("/health", healthRoutes);
+
+/**
+ * Calendar Optimization Routes
+ * Agentic workflow for Google Calendar optimization
+ */
+app.use("/calendar", calendarRoutes);
+
+/**
+ * Calendar Sync Routes
+ * Handle calendar synchronization and webhooks
+ */
+app.use("/calendar-sync", calendarSyncRoutes);
 
 // ============================================================================
 // Error Handling
