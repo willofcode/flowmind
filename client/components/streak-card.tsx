@@ -29,9 +29,13 @@ export function StreakCard({ streak, reducedAnimation = false }: StreakCardProps
   
   const scale = useSharedValue(1);
 
+  // Safety check: ensure streak values are valid numbers
+  const currentStreak = Number.isFinite(streak.currentStreak) ? streak.currentStreak : 0;
+  const longestStreak = Number.isFinite(streak.longestStreak) ? streak.longestStreak : 0;
+
   useEffect(() => {
     // Only animate if streak > 7 and animations are enabled
-    if (streak.currentStreak > 7 && !reducedAnimation) {
+    if (currentStreak > 7 && !reducedAnimation) {
       scale.value = withRepeat(
         withTiming(1.15, {
           duration: 1500,
@@ -43,7 +47,7 @@ export function StreakCard({ streak, reducedAnimation = false }: StreakCardProps
     } else {
       scale.value = 1;
     }
-  }, [streak.currentStreak, reducedAnimation]);
+  }, [currentStreak, reducedAnimation]);
 
   const animatedStarStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -63,18 +67,18 @@ export function StreakCard({ streak, reducedAnimation = false }: StreakCardProps
         <Text style={[styles.label, { color: colors.text }]}>
           Your Calm Streak
         </Text>
-        {streak.longestStreak > streak.currentStreak && (
+        {longestStreak > currentStreak && (
           <Text style={[styles.bestLabel, { color: colors.textTertiary }]}>
-            Best: {streak.longestStreak}
+            Best: {longestStreak}
           </Text>
         )}
       </View>
 
       {/* Streak Display */}
-      {streak.currentStreak <= 7 ? (
+      {currentStreak <= 7 ? (
         // Show dots for 1-7
         <View style={styles.dotsRow}>
-          {Array.from({ length: streak.currentStreak }).map((_, i) => (
+          {Array.from({ length: Math.max(0, currentStreak) }).map((_, i) => (
             <View
               key={i}
               style={[
@@ -86,7 +90,7 @@ export function StreakCard({ streak, reducedAnimation = false }: StreakCardProps
             />
           ))}
           {/* Empty dots for remaining */}
-          {Array.from({ length: 7 - streak.currentStreak }).map((_, i) => (
+          {Array.from({ length: Math.max(0, 7 - currentStreak) }).map((_, i) => (
             <View
               key={`empty-${i}`}
               style={[
@@ -106,18 +110,18 @@ export function StreakCard({ streak, reducedAnimation = false }: StreakCardProps
             ⭐
           </Animated.Text>
           <Text style={[styles.streakNumber, { color: colors.text }]}>
-            {streak.currentStreak}
+            {currentStreak}
           </Text>
         </View>
       )}
 
       {/* Encouragement Text */}
       <Text style={[styles.encouragement, { color: colors.textSecondary }]}>
-        {streak.currentStreak === 0 && 'Start your streak today!'}
-        {streak.currentStreak === 1 && 'Great start! Keep going.'}
-        {streak.currentStreak >=2 && streak.currentStreak <= 6 && 'You\'re building momentum!'}
-        {streak.currentStreak === 7 && 'One full week! Amazing!'}
-        {streak.currentStreak > 7 && 'Incredible consistency! 🎉'}
+        {currentStreak === 0 && 'Start your streak today!'}
+        {currentStreak === 1 && 'Great start! Keep going.'}
+        {currentStreak >= 2 && currentStreak <= 6 && 'You\'re building momentum!'}
+        {currentStreak === 7 && 'One full week! Amazing!'}
+        {currentStreak > 7 && 'Incredible consistency! 🎉'}
       </Text>
     </View>
   );

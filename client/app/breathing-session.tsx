@@ -9,11 +9,8 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
   withTiming,
-  withSequence,
   Easing,
-  interpolateColor,
 } from 'react-native-reanimated';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -66,18 +63,20 @@ export default function BreathingSessionScreen() {
   const colors = colorScheme === 'dark' ? CalmColors.dark : CalmColors.light;
   const breathColors = colorScheme === 'dark' ? BREATHING_COLORS.dark : BREATHING_COLORS.light;
 
-  const protocol: BreathingProtocol = (params.protocol as BreathingProtocol) || 'box';
+  // Safely get protocol with fallback
+  const protocol: BreathingProtocol = 
+    params.protocol === 'rescue' ? 'rescue' : 'box';
   const phases = PROTOCOLS[protocol];
 
   const [isActive, setIsActive] = useState(false);
   const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
-  const [countdown, setCountdown] = useState(phases[0].duration);
+  const [countdown, setCountdown] = useState(phases?.[0]?.duration ?? 4);
   const [cyclesCompleted, setCyclesCompleted] = useState(0);
 
   const scale = useSharedValue(0.8);
   const colorProgress = useSharedValue(0);
 
-  const currentPhase = phases[currentPhaseIndex];
+  const currentPhase = phases[currentPhaseIndex] ?? phases[0];
   const totalCycles = 3; // Complete 3 full cycles
 
   // Get color based on phase
@@ -97,6 +96,27 @@ export default function BreathingSessionScreen() {
       opacity: withTiming(isActive ? 0.9 : 0.5, { duration: 500 }),
     };
   });
+
+  // Trigger animation when phase changes
+  useEffect(() => {
+    if (!isActive) return;
+    
+    // Animate based on phase
+    if (currentPhase.name === 'Inhale') {
+      scale.value = withTiming(1.2, {
+        duration: currentPhase.duration * 1000,
+        easing: Easing.inOut(Easing.ease),
+      });
+    } else if (currentPhase.name === 'Exhale') {
+      scale.value = withTiming(0.6, {
+        duration: currentPhase.duration * 1000,
+        easing: Easing.inOut(Easing.ease),
+      });
+    } else {
+      // Hold - subtle pulse
+      scale.value = withTiming(1.0, { duration: 500 });
+    }
+  }, [currentPhase, isActive]);
 
   // Start breathing animation
   const startBreathing = () => {
@@ -146,7 +166,13 @@ export default function BreathingSessionScreen() {
         
         if (newCycleCount >= totalCycles) {
           // Session complete!
-          handleComplete();
+          setIsActive(false);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          
+          // Navigate back with success
+          setTimeout(() => {
+            router.back();
+          }, 2000);
           return;
         }
       }
@@ -155,7 +181,7 @@ export default function BreathingSessionScreen() {
       setCountdown(phases[nextIndex].duration);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-  }, [countdown, isActive]);
+  }, [countdown, isActive, currentPhaseIndex, cyclesCompleted, phases, totalCycles, router]);
 
   const handleComplete = () => {
     setIsActive(false);

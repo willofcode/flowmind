@@ -4,9 +4,10 @@
  * Neurodivergent-friendly with clear error messages
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Auth0 from 'react-native-auth0';
 import * as SecureStore from 'expo-secure-store';
+import { AppState, AppStateStatus } from 'react-native';
 import { auth0Config, validateAuth0Config } from './auth0-config';
 
 // Initialize Auth0 client
@@ -46,6 +47,63 @@ export const useAuth0 = () => {
     error: null,
   });
 
+  const backgroundTimestamp = useRef<number | null>(null);
+  const AUTO_LOGOUT_TIMEOUT = 2 * 60 * 1000; // 2 minutes in milliseconds
+
+  // Monitor app state changes
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+    if (nextAppState === 'background') {
+      // App is going to background - save timestamp to storage
+      const timestamp = Date.now().toString();
+      await SecureStore.setItemAsync('last_active_timestamp', timestamp);
+      backgroundTimestamp.current = Date.now();
+      console.log('📱 App went to background at', new Date().toLocaleTimeString());
+    } else if (nextAppState === 'active') {
+      // App came back to foreground - check if we should logout
+      const lastActiveTimestamp = await SecureStore.getItemAsync('last_active_timestamp');
+      
+      if (lastActiveTimestamp) {
+        const timeInBackground = Date.now() - parseInt(lastActiveTimestamp, 10);
+        console.log('📱 App came to foreground, was in background for', Math.round(timeInBackground / 1000), 'seconds');
+        
+        if (timeInBackground > AUTO_LOGOUT_TIMEOUT) {
+          console.log('⏱️  Session expired (>2 minutes) - logging out');
+          await clearAuthData();
+          return; // Don't update timestamp since we just logged out
+        }
+      }
+      
+      // Update last active timestamp
+      await SecureStore.setItemAsync('last_active_timestamp', Date.now().toString());
+      backgroundTimestamp.current = null;
+    }
+  };
+
+  const clearAuthData = async () => {
+    await SecureStore.deleteItemAsync('auth0_access_token');
+    await SecureStore.deleteItemAsync('auth0_refresh_token');
+    await SecureStore.deleteItemAsync('auth0_id_token');
+    await SecureStore.deleteItemAsync('auth0_user');
+    await SecureStore.deleteItemAsync('profile_completed');
+    await SecureStore.deleteItemAsync('user_name');
+    await SecureStore.deleteItemAsync('google_calendar_connected');
+    await SecureStore.deleteItemAsync('last_active_timestamp');
+    
+    setAuthState({
+      isAuthenticated: false,
+      isLoading: false,
+      user: null,
+      error: null,
+    });
+  };
+
   // Check if user is already authenticated
   useEffect(() => {
     checkAuthState();
@@ -55,8 +113,22 @@ export const useAuth0 = () => {
     try {
       const accessToken = await SecureStore.getItemAsync('auth0_access_token');
       const userJson = await SecureStore.getItemAsync('auth0_user');
+      const lastActiveTimestamp = await SecureStore.getItemAsync('last_active_timestamp');
 
       if (accessToken && userJson) {
+        // Check if session has expired (app was closed for >2 minutes)
+        if (lastActiveTimestamp) {
+          const timeSinceLastActive = Date.now() - parseInt(lastActiveTimestamp, 10);
+          console.log('⏱️  Time since last active:', Math.round(timeSinceLastActive / 1000), 'seconds');
+          
+          if (timeSinceLastActive > AUTO_LOGOUT_TIMEOUT) {
+            console.log('⏱️  Session expired (app was closed >2 minutes) - clearing auth');
+            await clearAuthData();
+            return;
+          }
+        }
+
+        // Session is still valid
         const user = JSON.parse(userJson);
         setAuthState({
           isAuthenticated: true,
@@ -64,6 +136,9 @@ export const useAuth0 = () => {
           user,
           error: null,
         });
+        
+        // Update last active timestamp
+        await SecureStore.setItemAsync('last_active_timestamp', Date.now().toString());
       } else {
         setAuthState({
           isAuthenticated: false,
@@ -123,6 +198,9 @@ export const useAuth0 = () => {
 
       // Store user data
       await SecureStore.setItemAsync('auth0_user', JSON.stringify(user));
+      
+      // Set initial last active timestamp
+      await SecureStore.setItemAsync('last_active_timestamp', Date.now().toString());
 
       setAuthState({
         isAuthenticated: true,
@@ -159,42 +237,21 @@ export const useAuth0 = () => {
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
 
-      // Clear stored tokens and data immediately
-      await SecureStore.deleteItemAsync('auth0_access_token');
-      await SecureStore.deleteItemAsync('auth0_refresh_token');
-      await SecureStore.deleteItemAsync('auth0_id_token');
-      await SecureStore.deleteItemAsync('auth0_user');
-      await SecureStore.deleteItemAsync('profile_completed');
-      await SecureStore.deleteItemAsync('user_name');
-      await SecureStore.deleteItemAsync('google_calendar_connected');
+      // Clear all local auth data (tokens, user data, timestamps)
+      await clearAuthData();
 
-      setAuthState({
-        isAuthenticated: false,
-        isLoading: false,
-        user: null,
-        error: null,
-      });
-
-      // Try to clear Auth0 session (optional, don't block on failure)
-      try {
-        const client = initAuth0();
-        await client.webAuth.clearSession();
-      } catch (sessionError: any) {
-        // Ignore user cancellation or session clear errors
-        console.log('Session clear skipped or cancelled:', sessionError.error);
-      }
+      // Note: We don't call clearSession() because:
+      // 1. It opens a browser which can fail with Auth0 misconfigurations
+      // 2. Local token clearing is sufficient for mobile app security
+      // 3. Tokens will expire naturally (24hr access, 30d refresh)
+      console.log('✅ Logged out successfully');
 
       return { success: true };
     } catch (error: any) {
-      console.error('Logout error:', error);
+      console.error('❌ Logout error:', error);
       
       // Even if there's an error, clear local state
-      setAuthState({
-        isAuthenticated: false,
-        isLoading: false,
-        user: null,
-        error: null,
-      });
+      await clearAuthData();
 
       return { success: true }; // Always return success for logout
     }

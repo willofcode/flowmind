@@ -37,6 +37,9 @@ export default function WelcomeScreen() {
   const [thoughtInput, setThoughtInput] = useState('');
   const [showTextInput, setShowTextInput] = useState(true);
 
+  // TextInput ref for proper focus management
+  const textInputRef = useRef<TextInput>(null);
+
   // Animation values
   const circleScale = useRef(new Animated.Value(0)).current;
   const circleOpacity = useRef(new Animated.Value(0)).current;
@@ -47,6 +50,15 @@ export default function WelcomeScreen() {
   const contentOpacity = useRef(new Animated.Value(0)).current;  useEffect(() => {
     checkReturningUser();
     startAnimations();
+  }, []);
+
+  // Delay focus to avoid iOS simulator warning
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      textInputRef.current?.focus();
+    }, 800); // Focus after animations start
+
+    return () => clearTimeout(timer);
   }, []);
 
   const checkReturningUser = async () => {
@@ -167,18 +179,6 @@ export default function WelcomeScreen() {
       // Save profile completion flag and name
       await SecureStore.setItemAsync('profile_completed', 'true');
       await SecureStore.setItemAsync('user_name', userName);
-
-      // Sync name to Auth0 user metadata
-      try {
-        const accessToken = await SecureStore.getItemAsync('auth0_access_token');
-        if (accessToken) {
-          await apiClient.updateUserName(accessToken, userName);
-          console.log('✅ User name synced to Auth0');
-        }
-      } catch (error) {
-        console.error('Failed to sync name to Auth0:', error);
-        // Continue anyway - name is saved locally
-      }
       
       // Navigate to main app
       router.replace('/(tabs)');
@@ -237,12 +237,12 @@ export default function WelcomeScreen() {
         ]}
       >
         <TextInput
+          ref={textInputRef}
           style={[styles.textInput, { color: colors.text }]}
           placeholder={isReturningUser ? "Share what's on your mind..." : "What's your name?"}
           placeholderTextColor={colors.textTertiary}
           value={isReturningUser ? thoughtInput : userName}
           onChangeText={isReturningUser ? setThoughtInput : setUserName}
-          autoFocus
           returnKeyType="done"
           onSubmitEditing={handleContinue}
           multiline={isReturningUser}

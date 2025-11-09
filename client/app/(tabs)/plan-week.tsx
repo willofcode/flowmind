@@ -74,9 +74,24 @@ export default function ScheduleScreen() {
   const fetchCalendarEvents = async () => {
     setLoading(true);
     try {
-      const token = await SecureStore.getItemAsync('google_access_token');
+      // Check if Google Calendar is connected
+      const isCalendarConnected = await SecureStore.getItemAsync('google_calendar_connected');
+      
+      if (!isCalendarConnected || isCalendarConnected !== 'true') {
+        console.log('📅 Google Calendar not connected yet - skipping fetch');
+        console.log('ℹ️  To connect: Go to Profile → Connect Google Calendar');
+        setLoading(false);
+        return;
+      }
+
+      // Try Auth0 token first (new flow), fallback to google_access_token (old flow)
+      let token = await SecureStore.getItemAsync('auth0_access_token');
       if (!token) {
-        console.log('No Google token found');
+        token = await SecureStore.getItemAsync('google_access_token');
+      }
+      
+      if (!token) {
+        console.log('No access token found - user needs to connect calendar');
         setLoading(false);
         return;
       }
@@ -85,6 +100,8 @@ export default function ScheduleScreen() {
       const startDate = new Date(year, month, 1);
       const endDate = new Date(year, month + 1, 0);
 
+      console.log('📅 Fetching calendar events from:', API_BASE_URL);
+      
       const response = await fetch(`${API_BASE_URL}/get-calendar-events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,6 +114,7 @@ export default function ScheduleScreen() {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Calendar events fetched:', data.events?.length || 0);
         const eventMap = new Map<string, CalendarEvent[]>();
 
         data.events?.forEach((event: any) => {
@@ -119,9 +137,15 @@ export default function ScheduleScreen() {
         });
 
         setEvents(eventMap);
+      } else {
+        console.error('❌ Calendar API error:', response.status, response.statusText);
       }
     } catch (err) {
-      console.error('Fetch calendar error:', err);
+      console.error('❌ Fetch calendar error:', err);
+      // Network error - likely backend server is not running
+      if (err instanceof TypeError && err.message === 'Network request failed') {
+        console.log('⚠️  Backend server not reachable. Make sure server is running on', API_BASE_URL);
+      }
     } finally {
       setLoading(false);
     }

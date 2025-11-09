@@ -4,10 +4,11 @@
  * Follows calm UI principles from DESIGN_PATTERNS.md
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as SecureStore from 'expo-secure-store';
 import { StreakCard } from '@/components/streak-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
@@ -37,6 +38,23 @@ export default function BrowseScreen() {
   
   const [streak] = useState<StreakData>(mockStreak);
   const [groceryItems, setGroceryItems] = useState(mockGroceryList);
+  const [calendarConnected, setCalendarConnected] = useState(false);
+
+  // Check if Google Calendar is connected on mount
+  useEffect(() => {
+    async function checkCalendarConnection() {
+      const connected = await SecureStore.getItemAsync('google_calendar_connected');
+      setCalendarConnected(connected === 'true');
+    }
+    checkCalendarConnection();
+  }, []);
+
+  const handleCalendarConnectionChange = (connected: boolean, token?: string) => {
+    setCalendarConnected(connected);
+    if (connected) {
+      console.log('✅ Calendar connected with token:', token?.substring(0, 20) + '...');
+    }
+  };
 
   const handleStartBreathing = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -102,6 +120,18 @@ export default function BrowseScreen() {
 
         {/* Streak Card */}
         <StreakCard streak={streak} />
+
+        {/* Calendar Status - Show connection status only (no button) */}
+        {calendarConnected && (
+          <View style={styles.section}>
+            <View style={[styles.statusCard, { backgroundColor: colors.surface, borderColor: colors.success }]}>
+              <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
+              <Text style={[styles.statusText, { color: colors.text }]}>
+                ✓ Google Calendar connected - AI planning active
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Breathing Tool Section */}
         <View style={styles.section}>
@@ -242,6 +272,25 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: '600',
+  },
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: CalmSpacing.sm,
+    padding: CalmSpacing.md,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  calendarStatus: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: CalmSpacing.sm,
+    textAlign: 'center',
   },
   toolCard: {
     borderRadius: 16,

@@ -37,7 +37,7 @@ export default function ProfileModal() {
             if (result.success) {
               router.replace('/landing');
             } else {
-              Alert.alert('Error', result.error || 'Failed to sign out');
+              Alert.alert('Error', 'Failed to sign out');
               setLoggingOut(false);
             }
           },

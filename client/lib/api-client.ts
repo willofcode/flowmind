@@ -157,6 +157,44 @@ class ApiClient {
       throw new Error(`Failed to update user name: ${response.statusText}`);
     }
   }
+
+  /**
+   * Create or update user in Supabase database
+   */
+  async createOrUpdateUser(email: string, name: string, auth0_sub: string): Promise<any> {
+    const response = await fetch(`${this.baseURL}/users`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, name, auth0_sub }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create/update user: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Update user profile (display name and preferences)
+   */
+  async updateUserProfile(userId: string, displayName: string): Promise<any> {
+    const response = await fetch(`${this.baseURL}/users/${userId}/profile`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ display_name: displayName }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update user profile: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
