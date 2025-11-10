@@ -7,7 +7,7 @@ node_modules/
 .env
 
 # google service account keys
-GoogleService-Info.plist/
+GoogleService-Info.plist
 
 # Expo
 .expo/

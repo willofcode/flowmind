@@ -601,8 +601,43 @@ function formatTime(date) {
  */
 async function storeActivitiesInDatabase(userId, activities) {
   try {
+    // Convert email to UUID if needed
+    let actualUserId = userId;
+    
+    // Check if userId is an email (contains @)
+    if (userId && userId.includes('@')) {
+      console.log(`🔍 Looking up UUID for email: ${userId}`);
+      
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', userId)
+        .single();
+      
+      if (userError || !userData) {
+        // Try to create user if not exists
+        console.log(`📝 Creating new user for email: ${userId}`);
+        const { data: newUser, error: createError } = await supabase
+          .from('users')
+          .insert({ email: userId, name: userId.split('@')[0] })
+          .select('id')
+          .single();
+        
+        if (createError) {
+          console.error('❌ Failed to create user:', createError);
+          return;
+        }
+        
+        actualUserId = newUser.id;
+        console.log(`✅ Created user with UUID: ${actualUserId}`);
+      } else {
+        actualUserId = userData.id;
+        console.log(`✅ Found user UUID: ${actualUserId}`);
+      }
+    }
+
     const records = activities.map(activity => ({
-      user_id: userId,
+      user_id: actualUserId,
       activity_type: activity.type,
       title: activity.title,
       description: activity.description,

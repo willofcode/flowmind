@@ -117,13 +117,46 @@ router.get("/check-updates", async (req, res) => {
       return res.status(400).json({ error: "Missing userId parameter" });
     }
 
+    // Convert email to UUID if needed
+    let actualUserId = userId;
+    
+    if (userId.includes('@')) {
+      console.log(`🔍 [calendar-sync] Looking up UUID for email: ${userId}`);
+      
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', userId)
+        .single();
+      
+      if (userError || !userData) {
+        console.log(`📝 [calendar-sync] Creating new user for email: ${userId}`);
+        const { data: newUser, error: createError } = await supabase
+          .from('users')
+          .insert({ email: userId, name: userId.split('@')[0] })
+          .select('id')
+          .single();
+        
+        if (createError) {
+          console.error('❌ Failed to create user:', createError);
+          return res.status(500).json({ error: 'Failed to create user' });
+        }
+        
+        actualUserId = newUser.id;
+        console.log(`✅ [calendar-sync] Created user with UUID: ${actualUserId}`);
+      } else {
+        actualUserId = userData.id;
+        console.log(`✅ [calendar-sync] Found user UUID: ${actualUserId}`);
+      }
+    }
+
     // Check for sync events since the given time
     const sinceTime = since ? new Date(since) : new Date(Date.now() - 60000); // Default: last minute
 
     const { data: syncEvents, error } = await supabase
       .from('calendar_sync_events')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', actualUserId)
       .gte('triggered_at', sinceTime.toISOString())
       .order('triggered_at', { ascending: false });
 
