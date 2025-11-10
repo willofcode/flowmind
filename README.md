@@ -596,29 +596,6 @@ We welcome contributions, especially from neurodivergent developers!
 
 ---
 
-## 💰 Cost Breakdown (Monthly)
-
-### Free Tier (Suitable for MVP)
-- **Supabase**: Free (500MB DB, 1GB storage, 2GB bandwidth)
-- **ElevenLabs**: Free (10,000 chars/month = ~20-30 conversations)
-- **OpenAI Whisper**: $5 credit (lasts ~833 minutes of transcription)
-- **Auth0**: Free (7,000 users, social logins)
-- **Google Calendar API**: Free (1M requests/day)
-- **NeuralSeek**: Contact for free trial
-
-**Estimated free tier supports:** 100-200 active users
-
-### Paid Tier (Scaling)
-- **Supabase Pro**: $25/month (8GB DB, 100GB storage)
-- **ElevenLabs Creator**: $22/month (100k chars = ~200 conversations)
-- **OpenAI Whisper**: ~$6 per 1,000 conversations (30s average)
-- **Auth0 Developer**: $35/month (10k users)
-- **NeuralSeek**: Custom pricing
-
-**Estimated cost for 1,000 users:** ~$100-150/month
-
----
-
 ## 📄 License
 
 MIT License - See [LICENSE](LICENSE) file
