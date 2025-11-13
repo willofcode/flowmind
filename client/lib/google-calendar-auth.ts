@@ -21,21 +21,63 @@ const STORAGE_KEYS = {
 export function configureGoogleSignIn() {
   console.log('🔧 Configuring Google Sign-In...');
   
-  const config = {
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  // Get credentials from environment with hardcoded fallbacks
+  // Note: EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID must be a DIFFERENT Web OAuth client
+  // NOT the same as the iOS client ID!
+  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  
+  if (!iosClientId) {
+    console.error('❌ ERROR: iOS Client ID not configured!');
+    console.error('❌ Please set EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID in client/.env');
+    throw new Error('Missing iOS Client ID - Google Sign-In cannot be configured');
+  }
+  
+  console.log('📱 iOS Client ID:', iosClientId.substring(0, 20) + '...');
+  console.log('🌐 Web Client ID:', webClientId ? webClientId.substring(0, 20) + '...' : 'NOT SET');
+  
+  // Validate that Web Client ID is different from iOS Client ID
+  if (webClientId && webClientId === iosClientId) {
+    console.error('❌ ERROR: Web Client ID cannot be the same as iOS Client ID!');
+    console.error('❌ Please create a separate "Web application" OAuth client in Google Cloud Console');
+    console.error('❌ Disabling offline access to prevent errors...');
+    // Force disable by clearing webClientId
+    const config: any = {
+      iosClientId,
+      scopes: [
+        'https://www.googleapis.com/auth/calendar.readonly',
+        'https://www.googleapis.com/auth/calendar.events',
+        'profile',
+        'email',
+      ],
+    };
+    GoogleSignin.configure(config);
+    console.log('✅ Google Sign-In configured (without offline access)');
+    attemptSilentSignIn();
+    return;
+  }
+  
+  const config: any = {
+    iosClientId,
     scopes: [
       'https://www.googleapis.com/auth/calendar.readonly',
       'https://www.googleapis.com/auth/calendar.events',
       'profile',
       'email',
     ],
-    offlineAccess: true,
-    forceCodeForRefreshToken: true,
   };
-
-  console.log('📱 iOS Client ID:', config.iosClientId?.substring(0, 20) + '...');
-  console.log('🌐 Web Client ID:', config.webClientId?.substring(0, 20) + '...');
+  
+  // Only enable offline access if Web Client ID is configured and valid
+  if (webClientId) {
+    config.webClientId = webClientId;
+    config.offlineAccess = true;
+    config.forceCodeForRefreshToken = true;
+    console.log('✅ Web Client ID configured - offline access enabled');
+  } else {
+    console.warn('⚠️  No Web Client ID found - offline access disabled');
+    console.warn('⚠️  To enable refresh tokens, create a Web OAuth client in Google Cloud Console');
+    console.warn('⚠️  Then set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in server/.env');
+  }
   
   GoogleSignin.configure(config);
   console.log('✅ Google Sign-In configured');
