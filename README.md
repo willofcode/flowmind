@@ -188,61 +188,7 @@ npm install
    ```
 3. Copy your project URL and anon key
 
-### 3. Configure Environment Variables
-
-**Server** (`server/.env`):
-```bash
-# Copy from .env.example
-cp .env.example .env
-
-# Edit with your credentials:
-PORT=3001
-
-# Supabase
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_supabase_anon_key_here
-
-# Auth0 (OAuth)
-AUTH0_DOMAIN=your-tenant.us.auth0.com
-AUTH0_CLIENT_ID=your_auth0_client_id
-AUTH0_CLIENT_SECRET=your_auth0_client_secret
-
-# NeuralSeek mAIstro
-NS_API_KEY=your_neuralseek_api_key
-NS_EMBED_CODE=your_embed_code
-NS_SEEK_ENDPOINT=https://stagingapi.neuralseek.com/v1/your-instance/seek
-NS_MAISTRO_ENDPOINT=https://stagingapi.neuralseek.com/v1/your-instance/maistro
-
-# Google Calendar (via ngrok for webhooks)
-GOOGLE_CALENDAR_WEBHOOK_URL=https://your-subdomain.ngrok-free.dev/calendar-sync/webhook
-
-# ElevenLabs TTS
-ELEVENLABS_API_KEY=sk_your_api_key_here
-ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM  # Rachel voice (calm female)
-
-# Google OAuth
-EXPO_PUBLIC_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-ios-client-id.apps.googleusercontent.com
-```
-
-**Client** (`client/.env`):
-```bash
-# API Connection
-EXPO_PUBLIC_API_BASE_URL=http://localhost:3001
-
-# OpenAI Whisper (for voice transcription)
-EXPO_PUBLIC_OPENAI_API_KEY=sk-your_openai_key_here
-
-# Google OAuth (same as server)
-EXPO_PUBLIC_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-ios-client-id.apps.googleusercontent.com
-
-# Auth0 (if using Auth0 sign-in)
-EXPO_PUBLIC_AUTH0_DOMAIN=your-tenant.us.auth0.com
-EXPO_PUBLIC_AUTH0_CLIENT_ID=your_auth0_client_id
-```
-
-### 4. Google Calendar Setup
+### 3. Google Calendar Setup
 
 Follow detailed guides in:
 - `Guide/GOOGLE_CALENDAR_INTEGRATION_COMPLETE.md` - Complete OAuth setup
@@ -261,7 +207,7 @@ Follow detailed guides in:
    # Copy HTTPS URL to GOOGLE_CALENDAR_WEBHOOK_URL
    ```
 
-### 5. Voice Transcription Setup
+### 4. Voice Transcription Setup
 
 See `Guide/VOICE_TRANSCRIPTION_ELEVENLABS_SETUP.md` for complete guide.
 
@@ -281,7 +227,7 @@ See `Guide/VOICE_TRANSCRIPTION_ELEVENLABS_SETUP.md` for complete guide.
    ```
 3. **Free tier:** 10,000 characters/month (~20-30 conversations)
 
-### 6. Run the App
+### 5. Run the App
 
 **Terminal 1 - Backend Server:**
 ```bash
@@ -301,7 +247,7 @@ npx expo prebuild  # First time only - generates native iOS folder
 npm run ios        # Opens Xcode simulator
 ```
 
-### 7. Test Voice Features
+### 6. Test Voice Features
 
 1. **Mood Check-in with Voice:**
    - Open app → Explore tab
