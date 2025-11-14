@@ -109,7 +109,7 @@ FlowMind is a therapeutic planning companion that uses **AI-driven conversation*
 - **Webhook System** - Google Calendar real-time updates
 
 ### External APIs & Services
-- **IBM NeuralSeek mAIstro** - AI sentiment analysis & conversational responses
+- **IBM NeuralSeek mAIstro** - Agentic Framework Orchestration to extract AI sentiment analysis & conversational responses
 - **OpenAI Whisper** - Voice-to-text transcription ($0.006/min)
 - **ElevenLabs TTS** - Text-to-speech with Rachel voice (10k chars/month free)
 - **Google Calendar API** - Schedule synchronization & event management
