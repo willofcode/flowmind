@@ -30,11 +30,27 @@ export interface SleepSchedule {
   usualWake: string;
 }
 
+export interface ActiveHoursConfig {
+  dailyActiveHours: number; // Total waking hours (default: 16)
+  customSchedule?: {
+    enabled: boolean;
+    // Optional: Different active hours per day
+    monday?: number;
+    tuesday?: number;
+    wednesday?: number;
+    thursday?: number;
+    friday?: number;
+    saturday?: number;
+    sunday?: number;
+  };
+}
+
 export interface PersonalNeuroProfile {
   userId?: string;
   workoutLikes: string[];
   diet: DietPreferences;
   sleep: SleepSchedule;
+  activeHours?: ActiveHoursConfig; // User's waking/active hours for schedule intensity
   energyWindows: EnergyWindow[];
   focusBlockMin: number;
   breakMin: number;

@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
@@ -62,6 +62,7 @@ export default function ScheduleScreen() {
   const [events, setEvents] = useState<Map<string, CalendarEvent[]>>(new Map());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [lastSyncCheck, setLastSyncCheck] = useState(new Date());
 
   const year = currentDate.getFullYear();
@@ -98,12 +99,30 @@ export default function ScheduleScreen() {
         const data = await response.json();
         if (data.hasUpdates) {
           console.log('🔄 Calendar updates detected, refreshing...');
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           await fetchCalendarEvents();
           setLastSyncCheck(new Date());
         }
       }
     } catch (error) {
       console.log('ℹ️  Sync check failed (normal if offline)');
+    }
+  };
+
+  // Pull-to-refresh handler
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    try {
+      await fetchCalendarEvents();
+      setLastSyncCheck(new Date());
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('❌ Refresh error:', error);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -221,7 +240,21 @@ export default function ScheduleScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.surface}
+            title="Pull to refresh calendar"
+            titleColor={colors.textSecondary}
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={handlePrevMonth} style={styles.navButton}>

@@ -1,6 +1,6 @@
 /**
  * Profile Modal
- * User profile with Google Sign-In info and settings
+ * User profile with Google Sign-In info, active hours settings, and account management
  */
 
 import React, { useState, useEffect } from 'react';
@@ -12,6 +12,8 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getCurrentCalendarUser, signOutFromGoogleCalendar, isSignedInToGoogleCalendar } from '@/lib/google-calendar-auth';
+import { loadProfile, saveProfile } from '@/lib/profile-store';
+import { PersonalNeuroProfile } from '@/types/neuro-profile';
 
 export default function ProfileModal() {
   const router = useRouter();
@@ -21,12 +23,32 @@ export default function ProfileModal() {
   const [isLoading, setIsLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [calendarConnected, setCalendarConnected] = useState(false);
+  
+  // Active hours state
+  const [profile, setProfile] = useState<PersonalNeuroProfile | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [activeHours, setActiveHours] = useState(16);
+  const [wakeTime, setWakeTime] = useState('07:00');
+  const [bedTime, setBedTime] = useState('23:00');
 
   // Load user data on mount
   useEffect(() => {
     loadUserData();
     checkCalendarConnection();
+    loadUserProfile();
   }, []);
+
+  // Calculate active hours from wake/bed time
+  useEffect(() => {
+    const [wakeHour, wakeMin] = wakeTime.split(':').map(Number);
+    const [bedHour, bedMin] = bedTime.split(':').map(Number);
+    
+    let totalMinutes = (bedHour * 60 + bedMin) - (wakeHour * 60 + wakeMin);
+    if (totalMinutes < 0) totalMinutes += 24 * 60; // Handle overnight
+    
+    const hours = Math.round(totalMinutes / 60);
+    setActiveHours(hours);
+  }, [wakeTime, bedTime]);
 
   const loadUserData = async () => {
     try {
@@ -42,9 +64,71 @@ export default function ProfileModal() {
     }
   };
 
+  const loadUserProfile = async () => {
+    try {
+      const savedProfile = await loadProfile();
+      if (savedProfile) {
+        setProfile(savedProfile);
+        
+        // Load from sleep schedule if available
+        if (savedProfile.sleep) {
+          setWakeTime(savedProfile.sleep.usualWake || '07:00');
+          setBedTime(savedProfile.sleep.usualBed || '23:00');
+        } else if (savedProfile.activeHours?.dailyActiveHours) {
+          setActiveHours(savedProfile.activeHours.dailyActiveHours);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+    }
+  };
+
   const checkCalendarConnection = async () => {
     const connected = await SecureStore.getItemAsync('google_calendar_connected');
     setCalendarConnected(connected === 'true');
+  };
+
+  const handleSaveActiveHours = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSaving(true);
+
+    try {
+      const updatedProfile: PersonalNeuroProfile = {
+        ...profile!,
+        sleep: {
+          usualWake: wakeTime,
+          usualBed: bedTime,
+        },
+        activeHours: {
+          dailyActiveHours: activeHours,
+          customSchedule: {
+            enabled: false,
+          },
+        },
+      };
+
+      // Save locally
+      await saveProfile(updatedProfile);
+      setProfile(updatedProfile);
+
+      // TODO: Sync to server when profile API endpoint is implemented
+      // if (profile.userId) {
+      //   await apiClient.saveProfile(updatedProfile);
+      // }
+
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Settings Saved ✓',
+        `Your active hours (${activeHours}h, ${wakeTime}-${bedTime}) have been updated. Activities will now be scheduled during your waking hours.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      Alert.alert('Error', 'Could not save your settings. Please try again.');
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -152,6 +236,169 @@ export default function ProfileModal() {
           </Text>
         </View>
       )}
+
+      {/* Active Hours Settings */}
+      <View style={styles.settingsSection}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+          Your Schedule
+        </Text>
+
+        {/* Active Hours Card */}
+        <View style={[styles.activeHoursCard, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>
+            ⏰ Active Hours
+          </Text>
+          <Text style={[styles.cardSubtext, { color: colors.textSecondary }]}>
+            Set your wake and bed times for accurate scheduling
+          </Text>
+
+          {/* Time Pickers */}
+          <View style={styles.timePickerRow}>
+            <View style={styles.timePicker}>
+              <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>
+                Wake Time
+              </Text>
+              <Pressable
+                style={[styles.timeButton, { 
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                }]}
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  Alert.alert(
+                    'Set Wake Time',
+                    'Choose your typical wake time',
+                    [
+                      { text: '5:00 AM', onPress: () => setWakeTime('05:00') },
+                      { text: '6:00 AM', onPress: () => setWakeTime('06:00') },
+                      { text: '7:00 AM', onPress: () => setWakeTime('07:00') },
+                      { text: '8:00 AM', onPress: () => setWakeTime('08:00') },
+                      { text: '9:00 AM', onPress: () => setWakeTime('09:00') },
+                      { text: '10:00 AM', onPress: () => setWakeTime('10:00') },
+                      { text: 'Cancel', style: 'cancel' },
+                    ]
+                  );
+                }}
+              >
+                <Text style={[styles.timeButtonText, { color: colors.text }]}>
+                  {wakeTime}
+                </Text>
+              </Pressable>
+            </View>
+
+            <Text style={[styles.timeSeparator, { color: colors.textSecondary }]}>
+              →
+            </Text>
+
+            <View style={styles.timePicker}>
+              <Text style={[styles.timeLabel, { color: colors.textSecondary }]}>
+                Bed Time
+              </Text>
+              <Pressable
+                style={[styles.timeButton, { 
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                }]}
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  Alert.alert(
+                    'Set Bed Time',
+                    'Choose your typical bed time',
+                    [
+                      { text: '9:00 PM', onPress: () => setBedTime('21:00') },
+                      { text: '10:00 PM', onPress: () => setBedTime('22:00') },
+                      { text: '11:00 PM', onPress: () => setBedTime('23:00') },
+                      { text: '12:00 AM', onPress: () => setBedTime('00:00') },
+                      { text: '1:00 AM', onPress: () => setBedTime('01:00') },
+                      { text: '2:00 AM', onPress: () => setBedTime('02:00') },
+                      { text: 'Cancel', style: 'cancel' },
+                    ]
+                  );
+                }}
+              >
+                <Text style={[styles.timeButtonText, { color: colors.text }]}>
+                  {bedTime}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Calculated Active Hours */}
+          <View style={[styles.activeHoursPreview, { backgroundColor: colors.background }]}>
+            <Text style={[styles.previewLabel, { color: colors.textSecondary }]}>
+              Active hours per day:
+            </Text>
+            <Text style={[styles.previewValue, { color: colors.primary }]}>
+              {activeHours} hours
+            </Text>
+          </View>
+
+          {/* Quick Presets */}
+          <Text style={[styles.presetsLabel, { color: colors.textSecondary }]}>
+            Quick Presets:
+          </Text>
+          <View style={styles.presetGrid}>
+            {[
+              { label: 'Early Bird', wake: '06:00', bed: '22:00' },
+              { label: 'Standard', wake: '07:00', bed: '23:00' },
+              { label: 'Night Owl', wake: '09:00', bed: '01:00' },
+            ].map((preset) => (
+              <Pressable
+                key={preset.label}
+                style={[
+                  styles.presetButton,
+                  {
+                    backgroundColor: 
+                      wakeTime === preset.wake && bedTime === preset.bed
+                        ? colors.primary
+                        : colors.background,
+                    borderColor: 
+                      wakeTime === preset.wake && bedTime === preset.bed
+                        ? colors.primary
+                        : colors.border,
+                  },
+                ]}
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setWakeTime(preset.wake);
+                  setBedTime(preset.bed);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.presetButtonText,
+                    {
+                      color: 
+                        wakeTime === preset.wake && bedTime === preset.bed
+                          ? '#FFFFFF'
+                          : colors.text,
+                    },
+                  ]}
+                >
+                  {preset.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Save Button */}
+          <Pressable
+            style={[
+              styles.saveButton,
+              {
+                backgroundColor: colors.primary,
+                opacity: saving ? 0.6 : 1,
+              },
+            ]}
+            onPress={handleSaveActiveHours}
+            disabled={saving}
+          >
+            <Text style={styles.saveButtonText}>
+              {saving ? 'Saving...' : 'Save Active Hours'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
 
       {/* Settings Section */}
       <View style={styles.settingsSection}>
@@ -332,6 +579,113 @@ const styles = StyleSheet.create({
   appDescription: {
     fontSize: 12,
     textAlign: 'center',
+  },
+  // Active Hours Settings Styles
+  activeHoursCard: {
+    padding: CalmSpacing.lg,
+    borderRadius: 16,
+    marginBottom: CalmSpacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: CalmSpacing.xs,
+  },
+  cardSubtext: {
+    fontSize: 14,
+    marginBottom: CalmSpacing.lg,
+  },
+  timePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: CalmSpacing.lg,
+  },
+  timePicker: {
+    flex: 1,
+  },
+  timeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: CalmSpacing.xs,
+  },
+  timeButton: {
+    paddingVertical: CalmSpacing.md,
+    paddingHorizontal: CalmSpacing.lg,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  timeButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  timeSeparator: {
+    fontSize: 24,
+    marginHorizontal: CalmSpacing.md,
+  },
+  activeHoursPreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: CalmSpacing.md,
+    borderRadius: 12,
+    marginBottom: CalmSpacing.lg,
+  },
+  previewLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  previewValue: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  presetsLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: CalmSpacing.sm,
+  },
+  presetGrid: {
+    flexDirection: 'row',
+    gap: CalmSpacing.sm,
+    marginBottom: CalmSpacing.lg,
+  },
+  presetButton: {
+    flex: 1,
+    paddingVertical: CalmSpacing.sm,
+    paddingHorizontal: CalmSpacing.md,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  presetButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  saveButton: {
+    paddingVertical: CalmSpacing.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
   },
 });
 

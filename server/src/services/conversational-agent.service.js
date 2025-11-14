@@ -48,14 +48,21 @@ export async function analyzeSentimentWithSchedule({
   transcription,
   conversationId,
   todayEvents = [],
-  conversationHistory = []
+  conversationHistory = [],
+  calculatedMetrics = null, // Pre-calculated metrics from client
+  scheduleContext = null // Pre-calculated schedule context from client
 }) {
   try {
     console.log(`\n🧠 Starting sentiment analysis for user: ${userId}`);
     
-    // STEP 1: Calculate schedule context
-    const scheduleContext = await calculateScheduleContext(userId, todayEvents);
-    console.log(`📊 Schedule Context:`, scheduleContext);
+    // Use pre-calculated schedule context if available, otherwise calculate
+    let finalScheduleContext = scheduleContext;
+    if (!finalScheduleContext) {
+      finalScheduleContext = await calculateScheduleContext(userId, todayEvents);
+      console.log(`📊 Calculated Schedule Context:`, finalScheduleContext);
+    } else {
+      console.log(`📊 Using pre-calculated Schedule Context:`, finalScheduleContext);
+    }
     
     // STEP 2: Get user's neuro profile for personalization
     const userProfile = await getUserNeuroProfile(userId);
@@ -63,26 +70,50 @@ export async function analyzeSentimentWithSchedule({
     // STEP 3: Build mAIstro sentiment analysis prompt
     const sentimentPrompt = buildSentimentAnalysisPrompt({
       transcription,
-      scheduleContext,
+      scheduleContext: finalScheduleContext,
       userProfile,
-      conversationHistory
+      conversationHistory,
+      calculatedMetrics // Pass pre-calculated metrics for context
     });
     
     // STEP 4: Call mAIstro for sentiment analysis
     const sentimentAnalysis = await callMaistroForSentiment(sentimentPrompt, conversationHistory);
     
-    // STEP 5: Calculate enhanced mood score with schedule correlation
-    const moodScore = calculateScheduleAwareMoodScore(
-      sentimentAnalysis.rawMoodScore,
-      scheduleContext,
-      sentimentAnalysis.stressIndicators
-    );
+    // STEP 5: Calculate mood score - blend pre-calculated with sentiment if available
+    let finalMoodScore;
+    let finalEnergyLevel;
+    let finalStressLevel;
+    
+    if (calculatedMetrics) {
+      // Blend schedule-based metrics with sentiment analysis
+      console.log(`📊 Blending pre-calculated metrics with sentiment analysis`);
+      
+      // Weight: 60% schedule-based, 40% sentiment-based
+      finalMoodScore = Math.round(
+        calculatedMetrics.moodScore * 0.6 + sentimentAnalysis.rawMoodScore * 0.4
+      );
+      
+      // Use sentiment to adjust energy/stress if they indicate high intensity
+      finalEnergyLevel = sentimentAnalysis.energyLevel || calculatedMetrics.energyLevel;
+      finalStressLevel = sentimentAnalysis.stressLevel || calculatedMetrics.stressLevel;
+      
+      console.log(`✅ Final blended metrics: Mood=${finalMoodScore}, Energy=${finalEnergyLevel}, Stress=${finalStressLevel}`);
+    } else {
+      // Use original calculation method
+      finalMoodScore = calculateScheduleAwareMoodScore(
+        sentimentAnalysis.rawMoodScore,
+        finalScheduleContext,
+        sentimentAnalysis.stressIndicators
+      );
+      finalEnergyLevel = sentimentAnalysis.energyLevel;
+      finalStressLevel = sentimentAnalysis.stressLevel;
+    }
     
     // STEP 6: Generate conversational response with mAIstro
     const conversationalResponse = await generateConversationalResponse({
       sentimentAnalysis,
-      moodScore,
-      scheduleContext,
+      moodScore: finalMoodScore,
+      scheduleContext: finalScheduleContext,
       userProfile,
       conversationHistory,
       transcription
@@ -94,21 +125,31 @@ export async function analyzeSentimentWithSchedule({
       conversationId,
       userMessage: transcription,
       agentMessage: conversationalResponse.text,
-      moodScore,
+      moodScore: finalMoodScore,
+      energyLevel: finalEnergyLevel,
+      stressLevel: finalStressLevel,
       sentimentAnalysis,
-      scheduleContext
+      scheduleContext: finalScheduleContext
     });
     
-    // STEP 8: Generate TTS audio with ElevenLabs
+    // STEP 8: Update user profile with latest mood metrics
+    await updateUserProfileMetrics({
+      userId,
+      moodScore: finalMoodScore,
+      energyLevel: finalEnergyLevel,
+      stressLevel: finalStressLevel
+    });
+    
+    // STEP 9: Generate TTS audio with ElevenLabs
     const audioUrl = await generateTTSResponse(conversationalResponse.text);
     
-    console.log(`✅ Sentiment analysis complete. Mood Score: ${moodScore}/10`);
+    console.log(`✅ Sentiment analysis complete. Mood Score: ${finalMoodScore}/10`);
     
     return {
       success: true,
-      moodScore,
-      energyLevel: sentimentAnalysis.energyLevel,
-      stressLevel: sentimentAnalysis.stressLevel,
+      moodScore: finalMoodScore,
+      energyLevel: finalEnergyLevel,
+      stressLevel: finalStressLevel,
       emotionalState: sentimentAnalysis.emotionalState,
       scheduleCorrelation: sentimentAnalysis.scheduleCorrelation,
       conversationalResponse: {
@@ -224,11 +265,21 @@ async function getUserNeuroProfile(userId) {
 /**
  * Build sentiment analysis prompt for mAIstro
  */
-function buildSentimentAnalysisPrompt({ transcription, scheduleContext, userProfile, conversationHistory }) {
+function buildSentimentAnalysisPrompt({ transcription, scheduleContext, userProfile, conversationHistory, calculatedMetrics }) {
   const conversationContext = conversationHistory.length > 0
     ? `\nPrevious conversation context:\n${conversationHistory.slice(-3).map(turn => 
         `${turn.role}: ${turn.message}`
       ).join('\n')}`
+    : '';
+  
+  const preCalculatedContext = calculatedMetrics
+    ? `\nPRE-CALCULATED SCHEDULE-BASED METRICS (from client):
+- Mood Score (schedule pattern): ${calculatedMetrics.moodScore}/10
+- Energy Level: ${calculatedMetrics.energyLevel}
+- Stress Level: ${calculatedMetrics.stressLevel}
+- Pattern: ${calculatedMetrics.reasoning}
+
+These metrics were calculated from yesterday's and today's schedule patterns. Your sentiment analysis will be blended with these.`
     : '';
   
   return `You are a compassionate mental health assistant analyzing a user's emotional state from their voice transcription.
@@ -237,19 +288,22 @@ USER TRANSCRIPTION:
 "${transcription}"
 
 TODAY'S SCHEDULE CONTEXT:
-- Total events today: ${scheduleContext.totalEvents}
-- Schedule intensity: ${scheduleContext.scheduleIntensity} (${scheduleContext.density}% busy)
-- Busy hours: ${scheduleContext.busyHours} hours
+- Total events today: ${scheduleContext.totalEvents || 'Unknown'}
+- Schedule intensity: ${scheduleContext.todayIntensity || scheduleContext.scheduleIntensity || 'Unknown'}
+- Ratio: ${scheduleContext.todayRatio || scheduleContext.density || 'Unknown'}%
 ${scheduleContext.currentActivity ? `- Currently in: ${scheduleContext.currentActivity.title} (ends in ${scheduleContext.currentActivity.endsIn} min)` : '- No current activity'}
 ${scheduleContext.nextEvent ? `- Next event: ${scheduleContext.nextEvent.title} (in ${scheduleContext.nextEvent.startsIn} min)` : '- No upcoming events'}
-${scheduleContext.recentEvents.length > 0 ? `- Recent events: ${scheduleContext.recentEvents.map(e => e.title).join(', ')}` : ''}
+${scheduleContext.recentEvents && scheduleContext.recentEvents.length > 0 ? `- Recent events: ${scheduleContext.recentEvents.map(e => e.title).join(', ')}` : ''}
+${preCalculatedContext}
 
 USER PROFILE:
-- Neurodivergent traits: ${JSON.stringify(userProfile.personality_traits)}
+- Neurodivergent traits: ${JSON.stringify(userProfile?.personality_traits || {})}
 ${conversationContext}
 
 TASK:
-Analyze the user's emotional state and identify correlations with their schedule. Return a JSON object with:
+Analyze the user's emotional state from their transcription. ${calculatedMetrics ? 'Consider the pre-calculated schedule-based metrics as a baseline and adjust based on what the user actually said.' : 'Identify correlations with their schedule.'}
+
+Return a JSON object with:
 
 {
   "rawMoodScore": <1-10, where 1=very distressed, 10=excellent>,
@@ -464,12 +518,14 @@ async function storeConversationTurn({
   userMessage,
   agentMessage,
   moodScore,
+  energyLevel,
+  stressLevel,
   sentimentAnalysis,
   scheduleContext
 }) {
   try {
     // Store user message
-    await supabase.from("conversations").insert({
+    const { error: userError } = await supabase.from("conversations").insert({
       user_id: userId,
       conversation_id: conversationId,
       role: "user",
@@ -477,25 +533,42 @@ async function storeConversationTurn({
       mood_score: moodScore,
       context: {
         sentiment: sentimentAnalysis,
-        schedule: scheduleContext
+        schedule: scheduleContext,
+        energyLevel,
+        stressLevel
       },
       created_at: new Date().toISOString()
     });
     
+    if (userError) {
+      console.error("⚠️  Failed to store user message:", userError);
+      throw userError;
+    }
+    
     // Store agent response
-    await supabase.from("conversations").insert({
+    const { error: agentError } = await supabase.from("conversations").insert({
       user_id: userId,
       conversation_id: conversationId,
       role: "assistant",
       message: agentMessage,
       mood_score: moodScore,
       intent: "response",
+      context: {
+        energyLevel,
+        stressLevel
+      },
       created_at: new Date().toISOString()
     });
     
-    console.log("✅ Conversation turn stored");
+    if (agentError) {
+      console.error("⚠️  Failed to store agent message:", agentError);
+      throw agentError;
+    }
+    
+    console.log("✅ Conversation turn stored successfully");
   } catch (error) {
-    console.error("⚠️  Failed to store conversation:", error);
+    console.error("❌ Failed to store conversation:", error);
+    throw error; // Re-throw to handle upstream
   }
 }
 
@@ -584,6 +657,73 @@ export async function getConversationHistory(userId, conversationId, limit = 10)
   }
   
   return data || [];
+}
+
+/**
+ * Update user profile with latest mood metrics
+ */
+async function updateUserProfileMetrics({ userId, moodScore, energyLevel, stressLevel }) {
+  try {
+    // First, check if user profile exists
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+    
+    if (fetchError && fetchError.code !== 'PGRST116') { // Not a "not found" error
+      console.error("⚠️  Error fetching user profile:", fetchError);
+      return;
+    }
+    
+    // Prepare mood metrics update
+    const currentMoodMetrics = {
+      moodScore,
+      energyLevel,
+      stressLevel,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    if (existingProfile) {
+      // Update existing profile - merge with existing neuro_preferences
+      const { error: updateError } = await supabase
+        .from("user_profiles")
+        .update({
+          neuro_preferences: {
+            ...(existingProfile.neuro_preferences || {}),
+            currentMood: currentMoodMetrics
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq("user_id", userId);
+      
+      if (updateError) {
+        console.error("⚠️  Failed to update user profile:", updateError);
+      } else {
+        console.log(`✅ Updated user profile with mood metrics: ${moodScore}/10`);
+      }
+    } else {
+      // Create new profile if doesn't exist
+      const { error: insertError } = await supabase
+        .from("user_profiles")
+        .insert({
+          user_id: userId,
+          neuro_preferences: {
+            currentMood: currentMoodMetrics
+          },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      
+      if (insertError) {
+        console.error("⚠️  Failed to create user profile:", insertError);
+      } else {
+        console.log(`✅ Created user profile with mood metrics: ${moodScore}/10`);
+      }
+    }
+  } catch (error) {
+    console.error("❌ Error updating user profile metrics:", error);
+  }
 }
 
 /**

@@ -39,19 +39,57 @@ export function TaskBubble({ task, onAccept, onSkip, reducedAnimation = false }:
   const handleAccept = (taskId: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
-    // If it's a breathing/meditation activity, launch calm session instead
-    if (task.type === 'BREATHING' || task.isBreathing) {
-      // Extract duration from task (default 5 minutes)
-      const durationMatch = task.title.match(/(\d+)-min/);
-      const duration = durationMatch ? parseInt(durationMatch[1]) : 5;
+    // Check if it's a FlowMind-generated activity (has 🌿 emoji)
+    const isFlowMindActivity = task.title?.startsWith('🌿');
+    
+    if (isFlowMindActivity) {
+      // If it's a breathing/meditation activity, launch calm session
+      // Check: type flag, isBreathing flag, OR "breath" in title
+      const isBreathingActivity = 
+        task.type === 'BREATHING' || 
+        task.isBreathing || 
+        task.title.toLowerCase().includes('breath');
       
-      // Determine protocol based on title keywords
-      let protocol = 'meditation';
-      if (task.title.toLowerCase().includes('box')) protocol = 'box';
-      if (task.title.toLowerCase().includes('rescue')) protocol = 'rescue';
-      
-      router.push(`/calm-session?protocol=${protocol}&duration=${duration}&fromWelcome=false`);
+      if (isBreathingActivity) {
+        // Extract duration from task (default 5 minutes)
+        const durationMatch = task.title.match(/(\d+)-min/);
+        const duration = durationMatch ? parseInt(durationMatch[1]) : 5;
+        
+        // Determine protocol based on title keywords
+        let protocol = 'meditation';
+        if (task.title.toLowerCase().includes('box')) protocol = 'box';
+        if (task.title.toLowerCase().includes('rescue')) protocol = 'rescue';
+        
+        router.push(`/calm-session?protocol=${protocol}&duration=${duration}&fromWelcome=false`);
+      } else {
+        // For all OTHER FlowMind activities (workouts, meals, walks, etc.), launch sand timer
+        // Extract duration from task description or calculate from start/end time
+        let duration = 30; // Default 30 minutes
+        
+        if (task.durationSec) {
+          duration = Math.round(task.durationSec / 60);
+        } else if (task.startTime && task.endTime) {
+          // Calculate from time range
+          const [startHour, startMin] = task.startTime.split(':').map(Number);
+          const [endHour, endMin] = task.endTime.split(':').map(Number);
+          const totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+          duration = totalMinutes > 0 ? totalMinutes : 30;
+        }
+        
+        // Remove emoji from title for sand timer display
+        const cleanTitle = task.title.replace('🌿 ', '');
+        
+        router.push({
+          pathname: '/sand-timer',
+          params: {
+            duration: duration.toString(),
+            title: cleanTitle,
+            taskId: task.id,
+          },
+        });
+      }
     } else {
+      // Non-FlowMind activities just mark as accepted
       onAccept(taskId);
     }
   };

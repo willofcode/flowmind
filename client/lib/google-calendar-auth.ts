@@ -387,6 +387,174 @@ export async function signInSilently(): Promise<{
 }
 
 // Export all functions
+/**
+ * Create calendar events for agentic activities
+ * Returns array of created event IDs
+ */
+export async function createCalendarEventsForActivities(
+  activities: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    startTime: string; // HH:mm format
+    endTime: string;   // HH:mm format
+    type: string;
+  }>
+): Promise<{ success: boolean; eventIds: string[]; errors: any[] }> {
+  const eventIds: string[] = [];
+  const errors: any[] = [];
+  
+  try {
+    const token = await getCalendarAccessToken();
+    if (!token) {
+      throw new Error('No calendar access token available');
+    }
+
+    // Get today's date for event creation
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    console.log(`📅 Creating ${activities.length} calendar events...`);
+
+    for (const activity of activities) {
+      try {
+        // Build RFC3339 datetime strings
+        const startDateTime = `${dateStr}T${activity.startTime}:00`;
+        const endDateTime = `${dateStr}T${activity.endTime}:00`;
+
+        // Determine color based on activity type
+        const colorId = getColorIdForActivityType(activity.type);
+
+        const event = {
+          summary: `🌿 ${activity.title}`, // Add FlowMind emoji prefix
+          description: activity.description || `FlowMind AI-generated ${activity.type} activity`,
+          start: {
+            dateTime: startDateTime,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+          end: {
+            dateTime: endDateTime,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+          colorId: colorId,
+          reminders: {
+            useDefault: false,
+            overrides: [
+              { method: 'popup', minutes: 10 },
+              { method: 'popup', minutes: 3 },
+              { method: 'popup', minutes: 1 },
+            ],
+          },
+          extendedProperties: {
+            private: {
+              flowmind_activity_id: activity.id,
+              flowmind_generated: 'true',
+              flowmind_type: activity.type,
+            },
+          },
+        };
+
+        const response = await fetch(
+          'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(event),
+          }
+        );
+
+        if (response.ok) {
+          const created = await response.json();
+          eventIds.push(created.id);
+          console.log(`✅ Created: ${activity.title} (${created.id})`);
+        } else {
+          const error = await response.text();
+          console.error(`❌ Failed to create ${activity.title}:`, error);
+          errors.push({ activity: activity.title, error });
+        }
+      } catch (err: any) {
+        console.error(`❌ Error creating ${activity.title}:`, err.message);
+        errors.push({ activity: activity.title, error: err.message });
+      }
+    }
+
+    console.log(`✅ Created ${eventIds.length}/${activities.length} calendar events`);
+    
+    return {
+      success: eventIds.length > 0,
+      eventIds,
+      errors,
+    };
+  } catch (error: any) {
+    console.error('❌ Calendar sync error:', error.message);
+    return {
+      success: false,
+      eventIds: [],
+      errors: [error.message],
+    };
+  }
+}
+
+/**
+ * Get Google Calendar color ID based on activity type
+ */
+function getColorIdForActivityType(type: string): string {
+  // Google Calendar color IDs:
+  // 1: Lavender, 2: Sage, 3: Grape, 4: Flamingo, 5: Banana
+  // 6: Tangerine, 7: Peacock, 8: Graphite, 9: Blueberry, 10: Basil, 11: Tomato
+  switch (type) {
+    case 'BREATHING':
+      return '7'; // Peacock (calm blue)
+    case 'WORKOUT':
+      return '11'; // Tomato (energizing red)
+    case 'MEAL':
+      return '10'; // Basil (green for nutrition)
+    case 'LIGHT_WALK':
+      return '2'; // Sage (gentle green)
+    case 'HYDRATION':
+      return '9'; // Blueberry (water blue)
+    default:
+      return '5'; // Banana (neutral yellow)
+  }
+}
+
+/**
+ * Delete calendar events for activities (cleanup)
+ */
+export async function deleteCalendarEvents(eventIds: string[]): Promise<void> {
+  try {
+    const token = await getCalendarAccessToken();
+    if (!token) return;
+
+    console.log(`🗑️  Deleting ${eventIds.length} calendar events...`);
+
+    for (const eventId of eventIds) {
+      try {
+        const response = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (response.ok) {
+          console.log(`✅ Deleted event: ${eventId}`);
+        }
+      } catch (err) {
+        console.error(`❌ Failed to delete ${eventId}`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Delete calendar events error:', error);
+  }
+}
+
 export default {
   configure: configureGoogleSignIn,
   signIn: signInWithGoogleCalendar,
@@ -396,4 +564,6 @@ export default {
   getCurrentUser: getCurrentCalendarUser,
   signOut: signOutFromGoogleCalendar,
   revokeAccess: revokeCalendarAccess,
+  createCalendarEventsForActivities,
+  deleteCalendarEvents,
 };

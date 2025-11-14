@@ -1,0 +1,36 @@
+
+> server@2.0.0 start
+> node index.js
+
+
+🚀 Starting FlowMind API Server...
+
+📊 Testing database connection...
+✅ Database connected
+🧠 Testing NeuralSeek connection...
+✅ NeuralSeek connected
+
+============================================================
+🎉 FlowMind API Server running on http://localhost:3001
+============================================================
+
+📍 Available Routes:
+   POST   http://localhost:3001/users
+   GET    http://localhost:3001/users/:email
+   POST   http://localhost:3001/mood/checkin
+   GET    http://localhost:3001/mood/:userId/history
+   GET    http://localhost:3001/mood/:userId/patterns
+   POST   http://localhost:3001/schedules
+   GET    http://localhost:3001/schedules/:userId/:weekStart
+   POST   http://localhost:3001/conversations
+   GET    http://localhost:3001/conversations/:userId
+   POST   http://localhost:3001/orchestration/sessions
+   GET    http://localhost:3001/orchestration/:userId/sessions
+   POST   http://localhost:3001/feedback
+   GET    http://localhost:3001/feedback/:userId
+   GET    http://localhost:3001/health
+
+============================================================
+
+✨ Server ready to accept requests
+

@@ -9,6 +9,7 @@
     "test": "node test-new-api.js"
   },
   "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.23.0",
     "@supabase/supabase-js": "^2.39.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",

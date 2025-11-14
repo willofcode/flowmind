@@ -19,6 +19,7 @@ import MoodCheckInSTT from '@/components/mood-checkin-stt';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { speakAIResponse } from '@/lib/elevenlabs-tts';
 
 interface MoodCheckInResult {
   transcription: string;
@@ -52,6 +53,14 @@ export default function MoodCheckInScreen() {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setResults(data);
     setShowResults(true);
+    
+    // Speak AI response if recommendations available
+    if (data.recommendations && data.recommendations.length > 0) {
+      const response = `I hear you. ${data.recommendations.join('. ')}`;
+      speakAIResponse(response).catch(err => 
+        console.log('TTS not available:', err)
+      );
+    }
   };
 
   const handleCancel = () => {

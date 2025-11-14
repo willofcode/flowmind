@@ -22,6 +22,8 @@ import {
   startConversationSession 
 } from "../services/conversational-agent.service.js";
 import { createClient } from "@supabase/supabase-js";
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+import { Readable } from "stream";
 
 const router = express.Router();
 
@@ -88,7 +90,14 @@ router.post("/start", async (req, res) => {
  */
 router.post("/analyze-sentiment", async (req, res) => {
   try {
-    const { userId, conversationId, transcription, todayEvents } = req.body;
+    const { 
+      userId, 
+      conversationId, 
+      transcription, 
+      todayEvents, 
+      calculatedMetrics,
+      scheduleContext 
+    } = req.body;
     
     if (!userId || !conversationId || !transcription) {
       return res.status(400).json({ 
@@ -98,6 +107,14 @@ router.post("/analyze-sentiment", async (req, res) => {
     
     console.log(`\n📝 Analyzing sentiment for conversation: ${conversationId}`);
     console.log(`Transcription: "${transcription}"`);
+    
+    // Use pre-calculated metrics from client if available
+    if (calculatedMetrics) {
+      console.log('📊 Using pre-calculated mood metrics from schedule:', calculatedMetrics);
+    }
+    if (scheduleContext) {
+      console.log('📅 Schedule context:', scheduleContext);
+    }
     
     // Get conversation history for context
     const conversationHistory = await getConversationHistory(userId, conversationId);
@@ -122,7 +139,9 @@ router.post("/analyze-sentiment", async (req, res) => {
       transcription,
       conversationId,
       todayEvents: events,
-      conversationHistory
+      conversationHistory,
+      calculatedMetrics, // Pass pre-calculated metrics
+      scheduleContext
     });
     
     if (!analysis.success) {
@@ -132,23 +151,25 @@ router.post("/analyze-sentiment", async (req, res) => {
       });
     }
     
-    console.log(`✅ Analysis complete. Mood: ${analysis.moodScore}/10, Response: "${analysis.conversationalResponse.text}"`);
+    console.log(`✅ Analysis complete. Mood: ${analysis.moodScore}/10, Energy: ${analysis.energyLevel}, Stress: ${analysis.stressLevel}`);
     
     res.json({
       success: true,
       conversationId,
+      moodScore: analysis.moodScore,
+      energyLevel: analysis.energyLevel,
+      stressLevel: analysis.stressLevel,
+      emotionalState: analysis.emotionalState,
+      conversationalResponse: analysis.conversationalResponse?.text || analysis.conversationalResponse,
+      recommendations: analysis.analysis?.recommendations || [],
+      scheduleCorrelation: analysis.scheduleCorrelation,
+      reasoning: calculatedMetrics?.reasoning,
+      ttsAudioUrl: analysis.conversationalResponse?.ttsAudioUrl,
       analysis: {
-        moodScore: analysis.moodScore,
-        energyLevel: analysis.energyLevel,
-        stressLevel: analysis.stressLevel,
-        emotionalState: analysis.emotionalState,
-        scheduleCorrelation: analysis.scheduleCorrelation,
-        triggers: analysis.analysis.triggers,
-        patterns: analysis.analysis.patterns,
-        confidence: analysis.analysis.confidence
-      },
-      response: analysis.conversationalResponse,
-      recommendations: analysis.analysis.recommendations
+        triggers: analysis.analysis?.triggers || [],
+        patterns: analysis.analysis?.patterns || [],
+        confidence: analysis.analysis?.confidence || 0.5
+      }
     });
     
   } catch (error) {
@@ -339,45 +360,52 @@ router.post("/generate-tts", async (req, res) => {
     }
     
     const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-    const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM"; // Rachel voice
+    const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb"; // Default voice
+    const MOCK_MODE = process.env.TTS_MOCK_MODE === 'true';
     
-    if (!ELEVENLABS_API_KEY) {
-      console.warn("⚠️  ElevenLabs API key not configured");
-      return res.json({ audioUrl: null, cached: false });
+    if (!ELEVENLABS_API_KEY || MOCK_MODE) {
+      console.warn(`⚠️  TTS in mock mode (${MOCK_MODE ? 'TTS_MOCK_MODE=true' : 'no API key'})`);
+      // Return a tiny silent MP3 data URI (1 second of silence)
+      const silentMp3Base64 = "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADhAC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7////////////////////////////////////////////AAAAAFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//MUZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAAAAwAAAAAAMQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/zFGQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+      return res.json({ 
+        audioUrl: `data:audio/mpeg;base64,${silentMp3Base64}`, 
+        cached: false, 
+        mock: true 
+      });
     }
     
     console.log(`🎙️  Generating TTS for: "${text.substring(0, 50)}..."`);
     
-    // Generate TTS with ElevenLabs
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-      {
-        method: "POST",
-        headers: {
-          "Accept": "audio/mpeg",
-          "Content-Type": "application/json",
-          "xi-api-key": ELEVENLABS_API_KEY
-        },
-        body: JSON.stringify({
-          text,
-          model_id: "eleven_monolingual_v1",
-          voice_settings: {
-            stability: 0.6,
-            similarity_boost: 0.8,
-            style: 0.2, // Calm, meditative
-            use_speaker_boost: true
-          }
-        })
-      }
-    );
+    // Initialize ElevenLabs client
+    const elevenlabs = new ElevenLabsClient({
+      apiKey: ELEVENLABS_API_KEY
+    });
     
-    if (!response.ok) {
-      throw new Error(`ElevenLabs API error: ${response.statusText}`);
+    // Generate audio stream
+    const audioStream = await elevenlabs.textToSpeech.convert(ELEVENLABS_VOICE_ID, {
+      text,
+      model_id: "eleven_multilingual_v2",
+      output_format: "mp3_44100_128",
+      voice_settings: {
+        stability: 0.6,
+        similarity_boost: 0.8,
+      }
+    });
+    
+    // Convert stream to buffer
+    const chunks = [];
+    const reader = audioStream.getReader();
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
     }
     
-    const audioBuffer = await response.arrayBuffer();
+    const audioBuffer = Buffer.concat(chunks);
+    console.log(`✅ Generated ${audioBuffer.length} bytes of audio`);
     
-    // Store in Supabase Storage
+    // Try to store in Supabase Storage (optional - fallback to base64 if fails)
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
       process.env.SUPABASE_URL,
@@ -393,8 +421,19 @@ router.post("/generate-tts", async (req, res) => {
       });
     
     if (uploadError) {
-      console.error("⚠️  Failed to upload TTS audio:", uploadError);
-      return res.json({ audioUrl: null, cached: false });
+      console.warn("⚠️  Storage bucket not found, returning base64 audio");
+      console.warn("   Run server/db_setup/create-storage-buckets.sql in Supabase");
+      
+      // Fallback: return base64-encoded audio
+      const base64Audio = audioBuffer.toString('base64');
+      const dataUri = `data:audio/mpeg;base64,${base64Audio}`;
+      
+      return res.json({
+        success: true,
+        audioUrl: dataUri,
+        cached: false,
+        fallback: true
+      });
     }
     
     // Get public URL
@@ -403,7 +442,7 @@ router.post("/generate-tts", async (req, res) => {
       .from("session-audio")
       .getPublicUrl(fileName);
     
-    console.log("✅ TTS audio generated:", urlData.publicUrl);
+    console.log("✅ TTS audio uploaded:", urlData.publicUrl);
     
     res.json({
       success: true,

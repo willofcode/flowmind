@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { speakBreathingPhase } from '@/lib/elevenlabs-tts';
 
 type BreathingProtocol = 'box' | 'rescue';
 
@@ -123,6 +124,11 @@ export default function BreathingSessionScreen() {
     setIsActive(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    // Speak first instruction with TTS
+    speakBreathingPhase(currentPhase.name, currentPhase.instruction).catch(err => 
+      console.log('TTS not available:', err)
+    );
+
     // Animate based on phase
     if (currentPhase.name === 'Inhale') {
       scale.value = withTiming(1.2, {
@@ -158,6 +164,12 @@ export default function BreathingSessionScreen() {
     } else {
       // Move to next phase
       const nextIndex = (currentPhaseIndex + 1) % phases.length;
+      
+      // Speak breathing instruction with TTS
+      const nextPhase = phases[nextIndex];
+      speakBreathingPhase(nextPhase.name, nextPhase.instruction).catch(err => 
+        console.log('TTS not available:', err)
+      );
       
       // Check if we completed a full cycle
       if (nextIndex === 0) {

@@ -160,6 +160,36 @@ export default function BrowseScreen() {
           </Pressable>
         </View>
 
+        {/* Sand Timer Section */}
+        <View style={[styles.section, { marginTop: CalmSpacing.lg }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: CalmSpacing.md }]}>
+            Focus & Time
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.toolCard,
+              {
+                backgroundColor: '#D4A574', // Sand/gold color
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push('/sand-timer-input');
+            }}
+          >
+            <View style={styles.toolCardContent}>
+              <IconSymbol name="timer" size={32} color="#FFFFFF" />
+              <View style={styles.toolTextContainer}>
+                <Text style={styles.toolTitle}>Sand Timer</Text>
+                <Text style={styles.toolDescription}>
+                  Visual timer with calming sand animation
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+        </View>
+
         {/* Conversation Tool Section */}
         <View style={[styles.section, { marginTop: CalmSpacing.lg }]}>
           <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: CalmSpacing.md }]}>

@@ -27,9 +27,13 @@ import { Audio } from 'expo-av';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CalmColors, CalmSpacing } from '@/constants/calm-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getCurrentCalendarUser, isSignedInToGoogleCalendar } from '@/lib/google-calendar-auth';
+import { getCurrentCalendarUser, isSignedInToGoogleCalendar, getCalendarAccessToken } from '@/lib/google-calendar-auth';
 import { apiClient } from '@/lib/api-client';
 import { transcribeAudio, validateAudioFile, mockTranscription } from '@/lib/voice-transcription';
+import { speakWelcome, speakAIResponse } from '@/lib/elevenlabs-tts';
+import { loadProfile } from '@/lib/profile-store';
+import { calculateScheduleIntensity, calculateMoodFromSchedule } from '@/lib/mood-calculator';
+import type { PersonalNeuroProfile } from '@/types/neuro-profile';
 
 const { width, height } = Dimensions.get('window');
 
@@ -45,8 +49,8 @@ export default function WelcomeScreen() {
   const [userName, setUserName] = useState('');
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [thoughtInput, setThoughtInput] = useState('');
-  const [showTextInput, setShowTextInput] = useState(!conversationMode); // Hide in conversation mode initially
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [showTextInput, setShowTextInput] = useState(conversationMode); // Show in conversation mode
+  const [isExpanded, setIsExpanded] = useState(conversationMode); // Auto-expand in conversation mode
   
   // Conversation state
   const [conversationHistory, setConversationHistory] = useState<any[]>([]);
@@ -79,7 +83,22 @@ export default function WelcomeScreen() {
     loadUserData();
     checkReturningUser();
     startAnimations();
-  }, []);
+    
+    // Auto-expand input in conversation mode
+    if (conversationMode) {
+      setTimeout(() => {
+        Animated.spring(inputHeight, {
+          toValue: 1,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 7,
+        }).start();
+        
+        // Focus input after animation
+        setTimeout(() => textInputRef.current?.focus(), 300);
+      }, 600); // Wait for entrance animations
+    }
+  }, [conversationMode]);
 
   // Load Google user data
   const loadUserData = async () => {
@@ -338,7 +357,95 @@ export default function WelcomeScreen() {
         setConversationId(currentConversationId);
       }
 
-      // Send message for analysis
+      // Get user profile for active hours calculation
+      const userProfile = await loadProfile();
+      const activeMinutes = userProfile?.activeHours?.dailyActiveHours 
+        ? userProfile.activeHours.dailyActiveHours * 60 
+        : 16 * 60; // Default 16 hours
+
+      // Fetch today's and yesterday's calendar events for mood calculation
+      console.log('📅 Fetching calendar events for mood calculation...');
+      const token = await getCalendarAccessToken();
+      
+      let todayEvents: any[] = [];
+      let yesterdayEvents: any[] = [];
+      
+      if (token) {
+        try {
+          const now = new Date();
+          
+          // Today's events
+          const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+          
+          const todayResponse = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/calendar/get-calendar-events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accessToken: token,
+              timeMin: todayStart.toISOString(),
+              timeMax: todayEnd.toISOString(),
+            }),
+          });
+          
+          if (todayResponse.ok) {
+            const todayData = await todayResponse.json();
+            todayEvents = todayData.events || [];
+          }
+          
+          // Yesterday's events
+          const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+          const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+          
+          const yesterdayResponse = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/calendar/get-calendar-events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accessToken: token,
+              timeMin: yesterdayStart.toISOString(),
+              timeMax: yesterdayEnd.toISOString(),
+            }),
+          });
+          
+          if (yesterdayResponse.ok) {
+            const yesterdayData = await yesterdayResponse.json();
+            yesterdayEvents = yesterdayData.events || [];
+          }
+        } catch (error) {
+          console.error('Error fetching calendar events:', error);
+        }
+      }
+
+      // Calculate schedule intensity for both days
+      const todayIntensity = calculateScheduleIntensity(
+        todayEvents.map((e: any) => ({
+          durationSec: (new Date(e.end?.dateTime || e.end?.date).getTime() - 
+                       new Date(e.start?.dateTime || e.start?.date).getTime()) / 1000
+        })),
+        activeMinutes
+      );
+      
+      const yesterdayIntensity = yesterdayEvents.length > 0 
+        ? calculateScheduleIntensity(
+            yesterdayEvents.map((e: any) => ({
+              durationSec: (new Date(e.end?.dateTime || e.end?.date).getTime() - 
+                           new Date(e.start?.dateTime || e.start?.date).getTime()) / 1000
+            })),
+            activeMinutes
+          )
+        : null;
+
+      // Calculate initial mood metrics from schedule pattern
+      const calculatedMetrics = calculateMoodFromSchedule(yesterdayIntensity, todayIntensity);
+      
+      console.log('📊 Calculated mood metrics:', {
+        moodScore: calculatedMetrics.moodScore,
+        energyLevel: calculatedMetrics.energyLevel,
+        stressLevel: calculatedMetrics.stressLevel,
+        reasoning: calculatedMetrics.reasoning
+      });
+
+      // Send message for analysis with pre-calculated metrics
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/conversation/analyze-sentiment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -347,11 +454,25 @@ export default function WelcomeScreen() {
           conversationId: currentConversationId,
           transcription: message,
           inputType,
+          calculatedMetrics: {
+            moodScore: calculatedMetrics.moodScore,
+            energyLevel: calculatedMetrics.energyLevel,
+            stressLevel: calculatedMetrics.stressLevel,
+            reasoning: calculatedMetrics.reasoning
+          },
+          scheduleContext: {
+            todayIntensity: todayIntensity.level,
+            todayRatio: todayIntensity.ratio,
+            yesterdayIntensity: yesterdayIntensity?.level,
+            yesterdayRatio: yesterdayIntensity?.ratio,
+          }
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to analyze message');
+        const errorText = await response.text();
+        console.error('❌ Backend error:', response.status, errorText);
+        throw new Error(`Failed to analyze message: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
@@ -413,6 +534,12 @@ export default function WelcomeScreen() {
 
   const saveConversationHistory = async (userId: string, history: any[]) => {
     try {
+      // Validate userId
+      if (!userId || userId.trim().length === 0) {
+        console.warn('⚠️  Invalid userId for saving conversation history');
+        return;
+      }
+      
       await SecureStore.setItemAsync(
         `conversation_history_${userId}`,
         JSON.stringify(history)
@@ -424,6 +551,12 @@ export default function WelcomeScreen() {
 
   const loadConversationHistory = async (userId: string) => {
     try {
+      // Validate userId
+      if (!userId || userId.trim().length === 0) {
+        console.warn('⚠️  Invalid userId for loading conversation history');
+        return;
+      }
+      
       const stored = await SecureStore.getItemAsync(`conversation_history_${userId}`);
       if (stored) {
         setConversationHistory(JSON.parse(stored));
@@ -437,7 +570,9 @@ export default function WelcomeScreen() {
   useEffect(() => {
     if (conversationMode && user) {
       const userId = user?.sub || user?.email || 'anonymous';
-      loadConversationHistory(userId);
+      if (userId && userId !== 'anonymous') {
+        loadConversationHistory(userId);
+      }
     }
   }, [conversationMode, user]);
 
@@ -477,6 +612,13 @@ export default function WelcomeScreen() {
       // Save profile completion flag and name
       await SecureStore.setItemAsync('profile_completed', 'true');
       await SecureStore.setItemAsync('user_name', userName);
+      
+      // Play welcome message with TTS
+      try {
+        await speakWelcome(userName);
+      } catch (error) {
+        console.log('TTS not available, continuing silently:', error);
+      }
       
       // Navigate to main app
       router.replace('/today');
@@ -633,34 +775,32 @@ export default function WelcomeScreen() {
 
           {/* Floating Icon - Only show when collapsed */}
           {!isExpanded && (
-            <>
-              <Animated.View 
-                style={[styles.floatingIcon, { opacity: contentOpacity }]}
+            <Animated.View 
+              style={[styles.floatingIcon, { opacity: contentOpacity }]}
+            >
+              <Pressable 
+                style={[styles.floatingButton, { backgroundColor: colors.primary }]}
+                onPress={toggleTextInput}
               >
-                <Pressable 
-                  style={[styles.floatingButton, { backgroundColor: colors.primary }]}
-                  onPress={toggleTextInput}
-                >
-                  <IconSymbol name="text.bubble" size={28} color="#FFFFFF" />
-                </Pressable>
-              </Animated.View>
-              
-              {/* Close button to return to browse */}
-              <Animated.View 
-                style={[styles.closeButtonContainer, { opacity: contentOpacity }]}
-              >
-                <Pressable 
-                  style={[styles.closeButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={async () => {
-                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.back();
-                  }}
-                >
-                  <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
-                </Pressable>
-              </Animated.View>
-            </>
+                <IconSymbol name="text.bubble" size={28} color="#FFFFFF" />
+              </Pressable>
+            </Animated.View>
           )}
+          
+          {/* Close button - Always show in conversation mode */}
+          <Animated.View 
+            style={[styles.closeButtonContainer, { opacity: contentOpacity }]}
+          >
+            <Pressable 
+              style={[styles.closeButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.back();
+              }}
+            >
+              <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
+            </Pressable>
+          </Animated.View>
         </>
       )}
 
@@ -946,15 +1086,21 @@ const styles = StyleSheet.create({
   closeButtonContainer: {
     position: 'absolute',
     top: CalmSpacing.xl,
-    left: CalmSpacing.lg,
+    right: CalmSpacing.lg, // Move to right side
+    zIndex: 1000, // Ensure it's above other elements
   },
   closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44, // Increased from 40 for better tap target
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   inputActions: {
     flexDirection: 'row',

@@ -18,6 +18,12 @@ export const defaultProfile: PersonalNeuroProfile = {
     usualBed: '23:30',
     usualWake: '07:30',
   },
+  activeHours: {
+    dailyActiveHours: 16, // Default: 16 waking hours (24 - 8 sleep)
+    customSchedule: {
+      enabled: false,
+    },
+  },
   energyWindows: [
     { start: '10:00', end: '12:00' },
     { start: '16:30', end: '18:00' },

@@ -41,6 +41,23 @@ export default function RootLayout() {
               animation: 'fade',
             }} 
           />
+          <Stack.Screen 
+            name="sand-timer" 
+            options={{ 
+              presentation: 'fullScreenModal',
+              headerShown: false,
+              animation: 'fade',
+              contentStyle: { backgroundColor: 'transparent' },
+            }} 
+          />
+          <Stack.Screen 
+            name="sand-timer-input" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              animation: 'slide_from_bottom',
+            }} 
+          />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>

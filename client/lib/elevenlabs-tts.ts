@@ -67,6 +67,7 @@ class ElevenLabsTTS {
     }
 
     console.log('🎙️ Generating TTS audio...');
+    console.log(`📍 API URL: ${API_BASE_URL}/conversation/generate-tts`);
 
     try {
       // Request TTS generation from backend
@@ -76,11 +77,27 @@ class ElevenLabsTTS {
         body: JSON.stringify({ text, voiceId }),
       });
 
+      console.log(`📡 Response status: ${response.status}`);
+
       if (!response.ok) {
-        throw new Error(`TTS API error: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('❌ TTS API error response:', errorText);
+        throw new Error(`TTS API error: ${response.statusText} - ${errorText}`);
       }
 
-      const { audioUrl } = await response.json();
+      const data = await response.json();
+      console.log('📦 Response data:', data);
+      
+      const { audioUrl, mock } = data;
+      
+      if (!audioUrl) {
+        console.warn('⚠️ No audioUrl returned, TTS may be disabled');
+        throw new Error('No audio URL returned from server');
+      }
+      
+      if (mock) {
+        console.log('🔇 TTS in mock mode - using silent audio');
+      }
       
       // Cache the URL
       this.audioCache.set(cacheKey, audioUrl);
@@ -231,12 +248,17 @@ export const ttsService = new ElevenLabsTTS();
  * Speak welcome message with calming tone
  */
 export async function speakWelcome(userName: string): Promise<void> {
-  const message = `Welcome to FlowMind, ${userName}. I'm here to help you find calm and focus. Let's take a moment to breathe together.`;
-  
-  return ttsService.speak({
-    text: message,
-    enableHaptics: true,
-  });
+  try {
+    const message = `Welcome to FlowMind, ${userName}. I'm here to help you find calm and focus. Let's take a moment to breathe together.`;
+    
+    await ttsService.speak({
+      text: message,
+      enableHaptics: true,
+    });
+  } catch (error) {
+    // Silently fail - TTS is optional
+    console.log('🔇 TTS not available (graceful fallback)');
+  }
 }
 
 /**
@@ -247,25 +269,35 @@ export async function speakBreathingPhase(
   instruction: string,
   onComplete?: () => void
 ): Promise<void> {
-  return ttsService.speak({
-    text: instruction,
-    enableHaptics: false, // Let breathing animation handle haptics
-    onComplete,
-  });
+  try {
+    await ttsService.speak({
+      text: instruction,
+      enableHaptics: false, // Let breathing animation handle haptics
+      onComplete,
+    });
+  } catch (error) {
+    // Silently fail - TTS is optional
+    console.log('🔇 TTS not available (graceful fallback)');
+    onComplete?.(); // Still call completion callback
+  }
 }
 
 /**
  * Speak mood check-in prompt
  */
 export async function speakMoodPrompt(isFirstTime: boolean = true): Promise<void> {
-  const message = isFirstTime
-    ? "How are you feeling right now? Take your time to share what's on your mind."
-    : "I'm listening. Tell me more about how you're feeling.";
-  
-  return ttsService.speak({
-    text: message,
-    enableHaptics: true,
-  });
+  try {
+    const message = isFirstTime
+      ? "How are you feeling right now? Take your time to share what's on your mind."
+      : "I'm listening. Tell me more about how you're feeling.";
+    
+    await ttsService.speak({
+      text: message,
+      enableHaptics: true,
+    });
+  } catch (error) {
+    console.log('🔇 TTS not available (graceful fallback)');
+  }
 }
 
 /**
@@ -275,11 +307,16 @@ export async function speakAIResponse(
   responseText: string,
   onComplete?: () => void
 ): Promise<void> {
-  return ttsService.speak({
-    text: responseText,
-    enableHaptics: true,
-    onComplete,
-  });
+  try {
+    await ttsService.speak({
+      text: responseText,
+      enableHaptics: true,
+      onComplete,
+    });
+  } catch (error) {
+    console.log('🔇 TTS not available (graceful fallback)');
+    onComplete?.();
+  }
 }
 
 export default ttsService;

@@ -115,6 +115,79 @@ router.post("/checkin", async (req, res) => {
 });
 
 /**
+ * @route   GET /mood/:userId/latest
+ * @desc    Get the latest mood check-in data for a user
+ * @access  Public
+ * @param   {string} userId - User's UUID or email
+ * @returns {Object} Latest mood data with score, energy, stress levels
+ */
+router.get("/:userId/latest", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // First try to get from mood_check_ins (most recent check-in)
+    const { data: moodCheckIn, error: moodError } = await supabase
+      .from("mood_check_ins")
+      .select("mood_score, energy_level, stress_level, check_in_date, check_in_time")
+      .eq("user_id", userId)
+      .order("check_in_date", { ascending: false })
+      .order("check_in_time", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (moodCheckIn && !moodError) {
+      // Check if it's from today or within last 24 hours
+      const checkInDateTime = new Date(`${moodCheckIn.check_in_date}T${moodCheckIn.check_in_time}`);
+      const hoursSinceCheckIn = (Date.now() - checkInDateTime.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursSinceCheckIn < 24) {
+        return res.json({
+          source: 'mood_check_in',
+          moodScore: moodCheckIn.mood_score,
+          energyLevel: moodCheckIn.energy_level,
+          stressLevel: moodCheckIn.stress_level,
+          timestamp: checkInDateTime.toISOString(),
+          hoursSinceCheckIn: Math.round(hoursSinceCheckIn * 10) / 10
+        });
+      }
+    }
+
+    // Fallback to user profile baseline
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("personality_traits")
+      .eq("user_id", userId)
+      .single();
+
+    if (profile && !profileError && profile.personality_traits) {
+      const traits = profile.personality_traits;
+      return res.json({
+        source: 'user_profile',
+        moodScore: traits.baselineMood || 6.5,
+        energyLevel: traits.baselineEnergy || 'medium',
+        stressLevel: traits.baselineStress || 'medium',
+        timestamp: null,
+        note: 'Using baseline from user profile'
+      });
+    }
+
+    // Final fallback to defaults
+    res.json({
+      source: 'default',
+      moodScore: 6.5,
+      energyLevel: 'medium',
+      stressLevel: 'medium',
+      timestamp: null,
+      note: 'Using system defaults'
+    });
+
+  } catch (err) {
+    console.error("❌ Latest mood fetch error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * @route   GET /mood/:userId/history
  * @desc    Get mood check-in history for a user
  * @access  Public
