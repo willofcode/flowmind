@@ -23,7 +23,9 @@ FlowMind is a therapeutic planning companion that uses **AI-driven conversation*
 - **📊 Mood Tracking**: Continuous mood patterns with schedule impact analysis
 - **💬 Multi-turn Conversations**: Natural dialogue that remembers context
 
-![Explore Tab - Conversational Mood Check-in](img/landingreturn.png)
+<p align="center">
+  <img src="img/landingreturn.png" width="400">
+</p>
 
 ### Intelligent Calendar Integration
 - **📅 Google Calendar Sync**: Automatic schedule analysis
@@ -42,7 +44,9 @@ FlowMind is a therapeutic planning companion that uses **AI-driven conversation*
 - **Energy-Aware**: Activities only during your peak energy windows
 - **No Guilt Design**: Skip buttons always visible, no streak shaming
 
-![Today View - Activity Timeline](img/app.png)
+<p align="center">
+  <img src="img/app.png" width="400">
+</p>
 
 ### Privacy & Data Security
 - **Local-First**: Profile stored securely on device (expo-secure-store)
