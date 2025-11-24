@@ -6,6 +6,12 @@
 
 FlowMind is a therapeutic planning companion that uses **AI-driven conversation** and **schedule intelligence** to help neurodivergent users manage their day with less stress. Powered by IBM NeuralSeek's mAIstro for sentiment analysis and OpenAI Whisper for voice transcription.
 
+## 🎬 Video Demo
+
+[![FlowMind Demo](https://img.youtube.com/vi/4L5e3T1ukhQ/maxresdefault.jpg)](https://www.youtube.com/watch?v=4L5e3T1ukhQ)
+
+**Watch the full demo**: [https://www.youtube.com/watch?v=4L5e3T1ukhQ](https://www.youtube.com/watch?v=4L5e3T1ukhQ)
+
 ---
 
 ## 🧠 Key Features
@@ -17,12 +23,16 @@ FlowMind is a therapeutic planning companion that uses **AI-driven conversation*
 - **📊 Mood Tracking**: Continuous mood patterns with schedule impact analysis
 - **💬 Multi-turn Conversations**: Natural dialogue that remembers context
 
+![Explore Tab - Conversational Mood Check-in](img/landingreturn.png)
+
 ### Intelligent Calendar Integration
 - **📅 Google Calendar Sync**: Automatic schedule analysis
 - **⏰ Schedule Intensity Detection**: High/medium/low workload calculation
 - **🎯 Agentic Activity Generation**: AI fills gaps with workouts, meals, breathing breaks
 - **🔄 Real-time Updates**: Webhook-based calendar monitoring
 - **📈 Pattern Discovery**: AI learns optimal activity timing from your habits
+
+![Intelligent Schedule](img/intelligentschedule.png)
 
 ### Neurodivergent-First Design
 - **Calm UI Mode**: Reduced motion, high contrast (WCAG AAA), larger touch targets
@@ -32,11 +42,15 @@ FlowMind is a therapeutic planning companion that uses **AI-driven conversation*
 - **Energy-Aware**: Activities only during your peak energy windows
 - **No Guilt Design**: Skip buttons always visible, no streak shaming
 
+![Today View - Activity Timeline](img/app.png)
+
 ### Privacy & Data Security
 - **Local-First**: Profile stored securely on device (expo-secure-store)
 - **Supabase Backend**: Optional cloud sync with row-level security
 - **OAuth 2.0**: Secure Google Calendar integration via Auth0
 - **Encrypted Storage**: All sensitive data encrypted at rest
+
+![Agentic Flow - AI Activity Generation](img/agenticflow.png)
 
 ---
 
