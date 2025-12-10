@@ -1,4 +1,4 @@
-# FlowMind - AI-Powered Neurodivergent Planning App
+# FlowMind - AI-Powered Mental Health Planning App
 ### Built for SBU Hack25' - Optimizing daily life through mindful structure and AI assistance
 
 > **Designed for ADHD, autistic, dyslexic, and neurodivergent users**  
